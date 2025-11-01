@@ -1,6 +1,6 @@
 # app.py
 import streamlit as st
-from streamlit_wallet_connector import wallet_connector
+from st_web3modal import web3modal_connect, web3modal_sign_message
 import secrets
 import time
 
@@ -8,8 +8,8 @@ st.set_page_config(page_title="Airdrop Shield", page_icon="Shield", layout="cent
 st.title("Shield Airdrop Shield")
 st.caption("Recover airdrops from compromised wallets — safely.")
 
-# Initialize wallet connector
-wallet = wallet_connector(key="wallet")
+# Initialize Web3Modal
+modal = web3modal_connect()
 
 tab1, tab2 = st.tabs(["Verify", "Claim"])
 
@@ -18,12 +18,13 @@ with tab1:
     compromised = st.text_input("Compromised Wallet", placeholder="0xDead...")
     safe = st.text_input("Safe Wallet", placeholder="0xSafe...")
 
-    if st.button("Connect Safe Wallet & Sign"):
+    if st.button("Connect & Sign Proof"):
         if not compromised or not safe:
             st.error("Enter both wallets")
         else:
             message = f"I own {compromised} and authorize recovery to {safe} - {secrets.token_hex(8)}"
-            signature = wallet.sign_message(message)
+            st.code(message)
+            signature = web3modal_sign_message(message)
             if signature:
                 st.success("Verified! Signature valid.")
                 st.session_state.verified = True
