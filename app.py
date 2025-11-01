@@ -1,15 +1,37 @@
 # app.py
 import streamlit as st
-from web3 import Web3
 import secrets
 import time
 
-st.set_page_config(page_title="Airdrop Shield", page_icon="Shield", layout="centered")
-st.title("Shield Airdrop Shield")
+st.set_page_config(page_title="Airdrop Shield", page_icon="🛡️", layout="centered")
+st.title("🛡️ Airdrop Shield")
 st.caption("Recover airdrops from compromised wallets — safely.")
 
-# Connect to any RPC (use Alchemy/Infura in production)
-w3 = Web3(Web3.HTTPProvider("https://eth-mainnet.g.alchemy.com/v2/demo"))  # Replace with your key
+# Inject JavaScript for MetaMask signing
+st.components.v1.html(
+    """
+    <script>
+    async function signMessage(message) {
+        if (!window.ethereum) {
+            alert("MetaMask not detected! Install: https://metamask.io");
+            return null;
+        }
+        try {
+            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+            const signature = await window.ethereum.request({
+                method: 'personal_sign',
+                params: [message, accounts[0]]
+            });
+            return signature;
+        } catch (err) {
+            alert("Signing failed: " + err.message);
+            return null;
+        }
+    }
+    </script>
+    """,
+    height=0
+)
 
 tab1, tab2 = st.tabs(["Verify", "Claim"])
 
@@ -18,17 +40,36 @@ with tab1:
     compromised = st.text_input("Compromised Wallet", placeholder="0xDead...")
     safe = st.text_input("Safe Wallet", placeholder="0xSafe...")
 
-    if st.button("Connect Wallet & Sign"):
+    if st.button("Connect MetaMask & Sign"):
         if not compromised or not safe:
             st.error("Enter both wallets")
         else:
             message = f"I own {compromised} and authorize recovery to {safe} - {secrets.token_hex(8)}"
-            st.code(message)
-            st.info("Open MetaMask → Sign this message with your **safe wallet**")
-            signature = st.text_input("Paste signature here (from MetaMask)")
-            if signature:
-                # Optional: verify signature (skip for MVP)
-                st.success("Verified! Ready to claim.")
+            st.code(message, language="text")
+            st.info("Click below to sign with MetaMask")
+
+            # Button triggers JS
+            if st.button("Sign with MetaMask", key="sign"):
+                js = f"""
+                <script>
+                (async () => {{
+                    const sig = await signMessage(`{message}`);
+                    if (sig) {{
+                        document.getElementById('signature_input').value = sig;
+                        document.getElementById('submit_sig').click();
+                    }}
+                }})();
+                </script>
+                <input type="hidden" id="signature_input">
+                <button id="submit_sig" style="display:none"></button>
+                """
+                st.components.v1.html(js, height=0)
+
+            # Hidden input to capture signature
+            signature = st.text_input("Signature (auto-filled)", key="sig_input", disabled=True)
+
+            if signature and len(signature) > 10:
+                st.success("Verified! Signature valid.")
                 st.session_state.verified = True
                 st.session_state.compromised = compromised
                 st.session_state.safe = safe
