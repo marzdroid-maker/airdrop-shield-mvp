@@ -1,2 +1,2 @@
-streamlit
-streamlit-wallet-connector
+streamlit==1.40.0
+streamlit-wallet-connector==0.0.5
