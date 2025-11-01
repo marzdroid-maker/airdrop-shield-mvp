@@ -1,79 +1,36 @@
+# app.py
+import json
+import secrets
+import time
+
 import streamlit as st
-import json, secrets, time
+import streamlit.components.v1 as components
 from eth_account import Account
 from eth_account.messages import encode_defunct
-import streamlit.components.v1 as components
+
 
 st.set_page_config(page_title="Airdrop Shield", page_icon="🛡️", layout="centered")
 st.title("🛡️ Airdrop Shield")
 st.caption("Recover airdrops from compromised wallets — safely.")
 
 
-# ---------------- MetaMask Signing Component ----------------
+# ---------------- MetaMask signer (auto-fill, no overlay fallback) ----------------
 def render_metamask_signer(message: str):
+    """
+    Opens MetaMask to sign `message`.
+    - Primary path: injects signature into the last st.text_input on the page (our Signature box).
+    - Fallback path: copies signature to clipboard and tells user to paste it.
+      (This avoids overlays that can render oddly in Streamlit Cloud iframes.)
+    """
     encoded = json.dumps(message)
 
     components.html(
         f"""
         <script>
-        function showFallback(signature) {{
-            const overlay = document.createElement('div');
-            overlay.style = `
-                position:fixed; inset:0;
-                background:rgba(0,0,0,0.6);
-                display:flex; align-items:center; justify-content:center;
-                z-index:999999;
-            `;
-
-            const box = document.createElement('div');
-            box.style = `
-                width:90%; max-width:500px;
-                background:#1c1c1c; color:#fff;
-                padding:18px; border-radius:10px;
-                font-family:system-ui, sans-serif;
-                border:1px solid #333;
-            `;
-
-            box.innerHTML = `
-                <div style="font-size:16px; margin-bottom:8px;">
-                    ✅ Signature ready — copy & paste below
-                </div>
-
-                <textarea id="sigFB"
-                    style="width:100%; height:120px; border-radius:8px;
-                        background:#0e0e0e; color:#eee; padding:10px;
-                        border:1px solid #444; resize:none;">${{signature}}</textarea>
-
-                <div style="display:flex; gap:10px; margin-top:10px; justify-content:flex-end;">
-                    <button id="copyFB"
-                        style="padding:8px 14px; background:#4caf50; border:none;
-                               border-radius:6px; cursor:pointer; color:white;">Copy</button>
-                    <button id="closeFB"
-                        style="padding:8px 14px; background:#666; border:none;
-                               border-radius:6px; cursor:pointer; color:white;">Close</button>
-                </div>
-            `;
-
-            overlay.appendChild(box);
-            document.body.appendChild(overlay);
-
-            document.getElementById("copyFB").onclick = async () => {{
-                const ta = document.getElementById("sigFB");
-                ta.select(); ta.setSelectionRange(0, 999999);
-                try {{ await navigator.clipboard.writeText(ta.value); }} catch (e) {{}}
-                document.body.removeChild(overlay);
-                alert("✅ Signature copied — paste into the field.");
-            }};
-
-            document.getElementById("closeFB").onclick = () => {{
-                document.body.removeChild(overlay);
-            }};
-        }}
-
         async function signMsg() {{
             const provider = window.top?.ethereum;
             if (!provider) {{
-                alert("MetaMask not detected. Install extension first.");
+                alert("MetaMask not detected — please install the extension.");
                 return;
             }}
 
@@ -86,24 +43,31 @@ def render_metamask_signer(message: str):
                     params: [{encoded}, from]
                 }});
 
-                // Find Streamlit text inputs. The last one is our signature box.
-                const inputs = window.parent.document.querySelectorAll("input[data-testid='stTextInput']");
-                const input = inputs[inputs.length - 1];
-
-                let ok = false;
+                // Try to auto-fill the Signature text input (last stTextInput on the page)
+                let injected = false;
                 try {{
-                    if (input) {{
-                        input.value = signature;
-                        input.dispatchEvent(new Event('input', {{ bubbles:true }}));
-                        ok = true;
+                    const inputs = window.parent.document.querySelectorAll("input[data-testid='stTextInput']");
+                    const sigInput = inputs[inputs.length - 1];  // our Signature box
+                    if (sigInput) {{
+                        sigInput.value = signature;
+                        sigInput.dispatchEvent(new Event('input', {{ bubbles:true }}));
+                        injected = true;
                     }}
                 }} catch (e) {{
-                    ok = false;
+                    injected = false;
                 }}
 
-                if (!ok) showFallback(signature);
-                else alert("✅ Signature captured.");
-
+                if (!injected) {{
+                    // Fallback: copy to clipboard and instruct user to paste
+                    try {{
+                        await navigator.clipboard.writeText(signature);
+                        alert("✅ Signature copied to clipboard. Please paste it into the Signature field.");
+                    }} catch (e) {{
+                        alert("✅ Signature ready. If it wasn't auto-filled, paste it into the Signature field.");
+                    }}
+                }} else {{
+                    alert("✅ Signature captured!");
+                }}
             }} catch (err) {{
                 alert("❌ Sign error: " + (err?.message || err));
             }}
@@ -116,7 +80,7 @@ def render_metamask_signer(message: str):
             🧾 Sign with MetaMask
         </button>
         """,
-        height=90,
+        height=70,
     )
 
 
@@ -136,39 +100,45 @@ with tab1:
             msg = f"I own {compromised} and authorize recovery to {safe} — {secrets.token_hex(8)}"
             st.session_state.message = msg
             st.code(msg)
-            st.info("Now sign this message in MetaMask ↓")
+            st.info("Now sign this message with MetaMask:")
 
     if "message" in st.session_state:
         st.write("### ✍️ Sign Message")
         render_metamask_signer(st.session_state.message)
 
+        # Single signature box. JS tries to auto-fill this; otherwise user pastes.
         signature = st.text_input(
-            "Signature (auto-filled or paste if popup appeared)",
+            "Signature (auto-filled after signing, or paste if prompted)",
             key="sig",
-            placeholder="Will auto-fill after signing"
+            placeholder="Will auto-fill after signing or paste here"
         )
 
         if st.button("Verify Signature"):
-            try:
-                msg = encode_defunct(text=st.session_state.message)
-                recovered = Account.recover_message(msg, signature=signature)
-
-                if recovered.lower() == safe.lower():
-                    st.success(f"✅ Verified! Signed by {recovered[:6]}...{recovered[-4:]}")
-                    st.session_state.verified = True
-                else:
-                    st.error("❌ Signature does not match safe wallet")
-            except Exception as e:
-                st.error(f"Invalid signature: {e}")
+            if not signature.strip():
+                st.warning("Paste your signature first.")
+            else:
+                try:
+                    msg = encode_defunct(text=st.session_state.message)
+                    recovered = Account.recover_message(msg, signature=signature)
+                    if recovered.lower() == safe.lower():
+                        st.success(f"✅ Verified! Signed by {recovered[:6]}...{recovered[-4:]}")
+                        st.session_state.verified = True
+                    else:
+                        st.error("❌ Signature does not match the safe wallet you entered.")
+                except Exception as e:
+                    st.error(f"Invalid signature: {e}")
 
 
 with tab2:
     st.subheader("Step 2: Claim Airdrop")
 
     if not st.session_state.get("verified"):
-        st.warning("Verify wallet ownership first")
+        st.warning("Verify wallet ownership first.")
     else:
-        drop = st.selectbox("Eligible airdrop", ["EigenLayer ($500)", "Hyperliquid ($300)", "Linea ($200)"])
+        drop = st.selectbox(
+            "Eligible airdrop",
+            ["EigenLayer ($500)", "Hyperliquid ($300)", "Linea ($200)"]
+        )
 
         if st.button("Claim via Private Bundle"):
             with st.spinner("Submitting secure bundle..."):
