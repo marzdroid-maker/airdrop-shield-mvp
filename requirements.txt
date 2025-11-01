@@ -1,2 +1,3 @@
 streamlit==1.40.0
-streamlit-wallet-connector==0.0.5
+st-web3modal==0.2.5
+web3==6.20.0
