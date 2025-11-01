@@ -15,12 +15,12 @@ st.caption("Recover airdrops from compromised wallets — safely.")
 
 
 # ----------------------------------------------------
-# ✅ MetaMask Sign Component (works in Streamlit iframe)
+# ✅ MetaMask Sign Component (returns signature to Streamlit)
 # ----------------------------------------------------
 def metamask_sign(message):
     encoded = json.dumps(message)
 
-    return components.html(
+    sig = components.html(
         f"""
         <script>
 
@@ -28,28 +28,28 @@ def metamask_sign(message):
             const provider = window.top?.ethereum;
 
             if (!provider) {{
-                alert("MetaMask not detected. Please open in a browser with MetaMask installed.");
+                alert("MetaMask not detected. Install MetaMask and refresh.");
                 return;
             }}
 
             try {{
                 const accounts = await provider.request({{
-                    method: 'eth_requestAccounts'
+                    method: "eth_requestAccounts"
                 }});
                 const from = accounts[0];
 
-                const sig = await provider.request({{
-                    method: 'personal_sign',
+                const signature = await provider.request({{
+                    method: "personal_sign",
                     params: [{encoded}, from]
                 }});
 
                 // ✅ Send signature to Streamlit
-                const streamlitEvent = {{
+                const out = {{
                     isStreamlitMessage: true,
                     type: "streamlit:setComponentValue",
-                    value: sig
+                    value: signature
                 }};
-                window.parent.postMessage(streamlitEvent, "*");
+                window.parent.postMessage(out, "*");
 
             }} catch (err) {{
                 alert("Signature failed: " + err.message);
@@ -58,15 +58,16 @@ def metamask_sign(message):
 
         </script>
 
-        <button onclick="signMessage()" 
+        <button onclick="signMessage()"
         style="padding:10px 18px;border-radius:8px;background:#f6851b;color:white;border:none;
         font-size:15px;cursor:pointer;margin-top:10px;">
             🧾 Sign with MetaMask
         </button>
-
         """,
-        height=100,
+        height=100
     )
+
+    return sig
 
 
 # ----------------------------------------------------
@@ -91,14 +92,18 @@ with tab1:
             msg = f"I own {compromised} and authorize recovery to {safe} - {secrets.token_hex(8)}"
             st.session_state.message = msg
             st.code(msg)
-            st.info("Sign this message with your **SAFE wallet** via MetaMask below.")
+            st.info("Sign this message with your **SAFE wallet** below.")
 
+    # After message generated
     if "message" in st.session_state:
         st.markdown("### ✍️ Sign Message")
-        signature = metamask_sign(st.session_state.message)
+
+        sig_value = metamask_sign(st.session_state.message)
 
         user_sig = st.text_input(
-            "Signature (auto-filled after MetaMask signs)", key="sig"
+            "Signature (auto-filled after signing)",
+            value=sig_value if sig_value else "",
+            key="sig"
         )
 
         if st.button("Verify Signature"):
@@ -125,7 +130,11 @@ with tab2:
     if not st.session_state.get("verified"):
         st.warning("Verify first.")
     else:
-        drop = st.selectbox("Airdrop", ["EigenLayer ($500)", "Hyperliquid ($300)", "Linea ($200)"])
+        drop = st.selectbox("Airdrop", [
+            "EigenLayer ($500)",
+            "Hyperliquid ($300)",
+            "Linea ($200)"
+        ])
 
         if st.button("Claim via Private Bundle"):
             with st.spinner("Submitting..."):
