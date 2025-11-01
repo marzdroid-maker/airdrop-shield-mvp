@@ -15,67 +15,62 @@ st.title("Shield Airdrop Shield")
 st.caption("Recover airdrops from compromised wallets — safely.")
 
 
-# ---------------- MetaMask Signer with Auto-Fill ----------------
+# ---------------- MetaMask Signer (Keeps Your Working Button) ----------------
 def render_metamask_signer(message: str):
     """
-    Renders a button that opens MetaMask.
-    Returns the signature (or None) via st_javascript + postMessage.
+    Uses your working HTML button.
+    Captures signature via postMessage + st_javascript.
     """
-    # Inject button + JS
+    # Your original button (keeps working popup)
     components.html(
         f"""
         <script>
         async function signAndSend() {{
-            if (!window.ethereum) {{
-                alert("MetaMask not detected. Please install the extension.");
+            const provider = window.ethereum || window.top?.ethereum;
+            if (!provider) {{
+                alert("MetaMask not detected");
                 return;
             }}
             try {{
-                const accounts = await window.ethereum.request({{ 
-                    method: 'eth_requestAccounts' 
+                const accounts = await provider.request({{ method: "eth_requestAccounts" }});
+                const from = accounts[0];
+                const signature = await provider.request({{
+                    method: "personal_sign",
+                    params: ['{message}', from]
                 }});
-                const signature = await window.ethereum.request({{
-                    method: 'personal_sign',
-                    params: ['{message}', accounts[0]]
-                }});
-                // Send signature back to Streamlit
-                window.parent.postMessage({{ 
-                    type: 'SIGNATURE_FROM_METAMASK', 
-                    signature: signature 
+                // Send to Streamlit
+                window.parent.postMessage({{
+                    type: 'METAMASK_SIGNATURE',
+                    signature: signature
                 }}, '*');
             }} catch (err) {{
-                alert("Signing failed: " + (err.message || err));
+                alert("Signing failed: " + (err?.message || err));
             }}
         }}
         </script>
 
         <button onclick="signAndSend()"
-                style="background:#f6851b; color:white; padding:12px 24px; 
-                       border:none; border-radius:8px; font-size:16px; 
-                       cursor:pointer; margin:10px 0;">
+            style="padding:12px 18px; border-radius:8px; background:#f6851b; color:#fff;
+                   border:none; font-size:15px; cursor:pointer; margin-top:8px;">
             Sign with MetaMask
         </button>
         """,
-        height=80,
+        height=70,
     )
 
-    # Listen for signature from JS
+    # Capture signature
     result = st_javascript("""
         new Promise((resolve) => {
             const handler = (event) => {
-                if (event.data && event.data.type === 'SIGNATURE_FROM_METAMASK') {
+                if (event.data?.type === 'METAMASK_SIGNATURE') {
                     resolve(event.data.signature);
                     window.removeEventListener('message', handler);
                 }
             };
             window.addEventListener('message', handler);
-            // Timeout after 60s
-            setTimeout(() => {
-                resolve(null);
-                window.removeEventListener('message', handler);
-            }, 60000);
+            setTimeout(() => resolve(null), 60000);
         });
-    """, key=f"sign_{secrets.token_hex(4)}")
+    """, key=f"sig_{secrets.token_hex(4)}")
 
     return result
 
@@ -95,32 +90,22 @@ with tab1:
         else:
             msg = f"I own {compromised} and authorize recovery to {safe} — {secrets.token_hex(8)}"
             st.session_state.message = msg
-            st.code(msg, language="text")
-            st.info("Click below to sign with MetaMask (your **safe wallet**):")
+            st.code(msg)
+            st.info("Now sign with MetaMask:")
 
     if "message" in st.session_state:
-        # Auto-capture signature
+        # Try auto-capture
         auto_sig = render_metamask_signer(st.session_state.message)
 
-        # Show auto-filled or manual input
         if auto_sig:
-            st.text_input(
-                "Signature (auto-filled from MetaMask)",
-                value=auto_sig,
-                disabled=True,
-                key="auto_sig"
-            )
+            st.text_input("Signature (auto-filled)", value=auto_sig, disabled=True)
             signature = auto_sig
         else:
-            signature = st.text_input(
-                "Signature (paste if not auto-filled)",
-                placeholder="0x...",
-                key="manual_sig"
-            )
+            signature = st.text_input("Signature (paste if not auto-filled)", placeholder="0x...")
 
         if st.button("Verify Signature"):
             if not signature or not signature.startswith("0x"):
-                st.warning("Please sign with MetaMask first.")
+                st.warning("Please sign first.")
             else:
                 try:
                     msg_hash = encode_defunct(text=st.session_state.message)
@@ -128,27 +113,20 @@ with tab1:
                     if recovered.lower() == safe.lower():
                         st.success(f"Verified! Signed by {recovered[:6]}...{recovered[-4:]}")
                         st.session_state.verified = True
-                        st.session_state.compromised = compromised
-                        st.session_state.safe = safe
                     else:
-                        st.error("Signature does not match the safe wallet.")
+                        st.error("Signature does not match safe wallet.")
                 except Exception as e:
-                    st.error(f"Invalid signature: {e}")
+                    st.error(f"Invalid: {e}")
 
 
 with tab2:
     st.subheader("Step 2: Claim Airdrop")
-
     if not st.session_state.get("verified"):
-        st.warning("Verify wallet ownership first.")
+        st.warning("Verify first.")
     else:
-        drop = st.selectbox(
-            "Eligible airdrop",
-            ["EigenLayer ($500)", "Hyperliquid ($300)", "Linea ($200)"]
-        )
-
+        drop = st.selectbox("Airdrop", ["EigenLayer ($500)", "Hyperliquid ($300)", "Linea ($200)"])
         if st.button("Claim via Private Bundle"):
-            with st.spinner("Submitting secure bundle..."):
+            with st.spinner("Submitting..."):
                 time.sleep(2)
             st.success(f"Claimed {drop}! TX: 0xMock{secrets.token_hex(8)}")
             st.balloons()
