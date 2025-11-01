@@ -6,77 +6,81 @@ import time
 import json
 import streamlit.components.v1 as components
 
+# ----------------------------------------------------
+# Streamlit Page Setup
+# ----------------------------------------------------
 st.set_page_config(page_title="Airdrop Shield", page_icon="🛡️", layout="centered")
 st.title("🛡️ Airdrop Shield")
 st.caption("Recover airdrops from compromised wallets — safely.")
 
+
 # ----------------------------------------------------
-# ✅ MetaMask Sign Component (calls personal_sign)
+# ✅ MetaMask Sign Component (works in Streamlit iframe)
 # ----------------------------------------------------
 def metamask_sign(message):
     encoded = json.dumps(message)
 
-    component = components.html(
+    return components.html(
         f"""
         <script>
+
         async function signMessage() {{
-            if (typeof window.ethereum === 'undefined') {{
-                window.parent.postMessage({{"signature": null, "error": "MetaMask not detected"}}, "*");
+            const provider = window.top?.ethereum;
+
+            if (!provider) {{
+                alert("MetaMask not detected. Please open in a browser with MetaMask installed.");
                 return;
             }}
 
             try {{
-                const accounts = await window.ethereum.request({{
+                const accounts = await provider.request({{
                     method: 'eth_requestAccounts'
                 }});
                 const from = accounts[0];
 
-                const sig = await window.ethereum.request({{
+                const sig = await provider.request({{
                     method: 'personal_sign',
                     params: [{encoded}, from]
                 }});
 
-                window.parent.postMessage({{"signature": sig}}, "*");
+                // ✅ Send signature to Streamlit
+                const streamlitEvent = {{
+                    isStreamlitMessage: true,
+                    type: "streamlit:setComponentValue",
+                    value: sig
+                }};
+                window.parent.postMessage(streamlitEvent, "*");
+
             }} catch (err) {{
-                window.parent.postMessage({{"signature": null, "error": err.message}}, "*");
+                alert("Signature failed: " + err.message);
             }}
         }}
 
-        window.addEventListener("message", (event) => {{
-            const data = event.data;
-            if (!data) return;
-            if (data.type === "streamlit:render") return;
-
-            if (data.signature !== undefined) {{
-                const out = {{
-                    "isStreamlitMessage": true,
-                    "type": "streamlit:setComponentValue",
-                    "value": data.signature
-                }};
-                window.parent.postMessage(out, "*");
-            }}
-        }});
         </script>
 
         <button onclick="signMessage()" 
-        style="padding:10px 18px;border-radius:8px;background:#f6851b;color:white;border:none;font-size:15px;cursor:pointer;">
+        style="padding:10px 18px;border-radius:8px;background:#f6851b;color:white;border:none;
+        font-size:15px;cursor:pointer;margin-top:10px;">
             🧾 Sign with MetaMask
         </button>
+
         """,
-        height=80,
+        height=100,
     )
-    return component
+
 
 # ----------------------------------------------------
-# ✅ Tabs
+# Tabs
 # ----------------------------------------------------
 tab1, tab2 = st.tabs(["Verify", "Claim"])
 
+
 # ----------------------------------------------------
-# ✅ Verify Tab
+# ✅ Verify Ownership Tab
 # ----------------------------------------------------
 with tab1:
     st.subheader("Step 1: Verify Ownership")
+
     compromised = st.text_input("Compromised Wallet", placeholder="0xDead...")
     safe = st.text_input("Safe Wallet", placeholder="0xSafe...")
 
@@ -87,13 +91,15 @@ with tab1:
             msg = f"I own {compromised} and authorize recovery to {safe} - {secrets.token_hex(8)}"
             st.session_state.message = msg
             st.code(msg)
-            st.info("Click below to sign this with your **safe wallet**")
+            st.info("Sign this message with your **SAFE wallet** via MetaMask below.")
 
     if "message" in st.session_state:
         st.markdown("### ✍️ Sign Message")
         signature = metamask_sign(st.session_state.message)
 
-        user_sig = st.text_input("Signature (auto-filled after signing)", key="sig")
+        user_sig = st.text_input(
+            "Signature (auto-filled after MetaMask signs)", key="sig"
+        )
 
         if st.button("Verify Signature"):
             try:
@@ -110,6 +116,7 @@ with tab1:
                     st.error("❌ Signature does not match safe wallet")
             except Exception as e:
                 st.error(f"Invalid signature: {e}")
+
 
 # ----------------------------------------------------
 # ✅ Claim Tab
