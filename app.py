@@ -1,78 +1,63 @@
 # app.py
-import json
 import secrets
 import time
-
 import streamlit as st
 import streamlit.components.v1 as components
 from eth_account import Account
 from eth_account.messages import encode_defunct
-from streamlit_javascript import st_javascript
-
 
 st.set_page_config(page_title="Airdrop Shield", page_icon="Shield", layout="centered")
 st.title("Shield Airdrop Shield")
 st.caption("Recover airdrops from compromised wallets — safely.")
 
-
-# ---------------- MetaMask Signer (Keeps Your Working Button) ----------------
+# ---------------- MetaMask Signer with Auto-Fill ----------------
 def render_metamask_signer(message: str):
-    """
-    Uses your working HTML button.
-    Captures signature via postMessage + st_javascript.
-    """
-    # Your original button (keeps working popup)
+    # Unique key to avoid caching
+    key = secrets.token_hex(8)
+
     components.html(
         f"""
         <script>
-        async function signAndSend() {{
-            const provider = window.ethereum || window.top?.ethereum;
-            if (!provider) {{
+        async function signAndStore() {{
+            if (!window.ethereum) {{
                 alert("MetaMask not detected");
                 return;
             }}
             try {{
-                const accounts = await provider.request({{ method: "eth_requestAccounts" }});
-                const from = accounts[0];
-                const signature = await provider.request({{
-                    method: "personal_sign",
-                    params: ['{message}', from]
+                const accounts = await window.ethereum.request({{ method: 'eth_requestAccounts' }});
+                const signature = await window.ethereum.request({{
+                    method: 'personal_sign',
+                    params: ['{message}', accounts[0]]
                 }});
-                // Send to Streamlit
-                window.parent.postMessage({{
-                    type: 'METAMASK_SIGNATURE',
-                    signature: signature
-                }}, '*');
+                // Store in sessionStorage + trigger rerun
+                sessionStorage.setItem('metamask_sig_{key}', signature);
+                // Trigger Streamlit rerun
+                window.parent.location.href = window.parent.location.href + '?rerun=1';
             }} catch (err) {{
-                alert("Signing failed: " + (err?.message || err));
+                alert("Signing failed: " + err.message);
             }}
         }}
         </script>
 
-        <button onclick="signAndSend()"
-            style="padding:12px 18px; border-radius:8px; background:#f6851b; color:#fff;
-                   border:none; font-size:15px; cursor:pointer; margin-top:8px;">
+        <button onclick="signAndStore()"
+                style="background:#f6851b; color:white; padding:12px 24px; 
+                       border:none; border-radius:8px; font-size:16px; cursor:pointer;">
             Sign with MetaMask
         </button>
         """,
         height=70,
     )
 
-    # Capture signature
-    result = st_javascript("""
-        new Promise((resolve) => {
-            const handler = (event) => {
-                if (event.data?.type === 'METAMASK_SIGNATURE') {
-                    resolve(event.data.signature);
-                    window.removeEventListener('message', handler);
-                }
-            };
-            window.addEventListener('message', handler);
-            setTimeout(() => resolve(null), 60000);
-        });
-    """, key=f"sig_{secrets.token_hex(4)}")
+    # Check if signature was stored
+    sig = st.session_state.get(f"sig_{key}")
+    if sig:
+        return sig
+    return None
 
-    return result
+
+# ---------------- Rerun Detection ----------------
+if st.experimental_get_query_params().get("rerun"):
+    st.experimental_rerun()
 
 
 # ---------------- UI ----------------
@@ -86,35 +71,67 @@ with tab1:
 
     if st.button("Generate Message"):
         if not compromised or not safe:
-            st.error("Enter both wallet addresses")
+            st.error("Enter both wallets")
         else:
             msg = f"I own {compromised} and authorize recovery to {safe} — {secrets.token_hex(8)}"
             st.session_state.message = msg
+            st.session_state.sign_key = secrets.token_hex(8)
             st.code(msg)
-            st.info("Now sign with MetaMask:")
+            st.info("Click to sign with MetaMask:")
 
-    if "message" in st.session_state:
-        # Try auto-capture
+    if "message" in st.session_state and "sign_key" in st.session_state:
+        key = st.session_state.sign_key
+
+        # Try to get signature from sessionStorage
+        sig_js = f"""
+        <script>
+        const sig = sessionStorage.getItem('metamask_sig_{key}');
+        if (sig) {{
+            window.parent.postMessage({{type: 'STORE_SIG', key: '{key}', sig: sig}}, '*');
+            sessionStorage.removeItem('metamask_sig_{key}');
+        }}
+        </script>
+        """
+        components.html(sig_js, height=0)
+
+        # Capture via postMessage
+        sig_result = st_javascript(f"""
+            new Promise((resolve) => {{
+                const handler = (e) => {{
+                    if (e.data.type === 'STORE_SIG' && e.data.key === '{key}') {{
+                        resolve(e.data.sig);
+                    }}
+                }};
+                window.addEventListener('message', handler);
+                setTimeout(() => resolve(null), 5000);
+            }});
+        """)
+
+        if sig_result:
+            st.session_state[f"sig_{key}"] = sig_result
+            st.experimental_rerun()
+
+        # Render button
         auto_sig = render_metamask_signer(st.session_state.message)
 
         if auto_sig:
             st.text_input("Signature (auto-filled)", value=auto_sig, disabled=True)
             signature = auto_sig
         else:
-            signature = st.text_input("Signature (paste if not auto-filled)", placeholder="0x...")
+            signature = st.text_input("Signature (paste if needed)", placeholder="0x...")
 
         if st.button("Verify Signature"):
             if not signature or not signature.startswith("0x"):
-                st.warning("Please sign first.")
+                st.warning("Sign first.")
             else:
                 try:
                     msg_hash = encode_defunct(text=st.session_state.message)
                     recovered = Account.recover_message(msg_hash, signature=signature)
                     if recovered.lower() == safe.lower():
-                        st.success(f"Verified! Signed by {recovered[:6]}...{recovered[-4:]}")
+                        st.success(f"Verified! {recovered[:6]}...{recovered[-4:]}")
                         st.session_state.verified = True
                     else:
-                        st.error("Signature does not match safe wallet.")
+                        st.error("Wrong wallet.")
                 except Exception as e:
                     st.error(f"Invalid: {e}")
 
