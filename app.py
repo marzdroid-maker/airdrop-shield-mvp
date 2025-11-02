@@ -39,7 +39,8 @@ with tab1:
                 const signatureInput = document.getElementById('signature-output');
 
                 if (!window.ethereum) {{
-                    statusDiv.innerHTML = '<span style="color:red; font-weight:bold;">INSTALL METAMASK</span>';
+                    // UPDATED ERROR MESSAGE FOR CLARITY
+                    statusDiv.innerHTML = '<span style="color:red; font-weight:bold;">METAMASK NOT DETECTED.</span> Please ensure the browser extension is active and injected.';
                     return;
                 }}
                 
