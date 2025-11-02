@@ -37,13 +37,15 @@ with tab1:
                         method: 'personal_sign',
                         params: ['{st.session_state.message}', accounts[0]]
                     }});
-                    // COPY + FILL + VERIFY
+                    // FRESH COPY
                     await navigator.clipboard.writeText(sig);
+                    // FIND BOX
                     const box = parent.document.querySelector('input[data-testid="stTextInput"]');
                     box.value = sig;
-                    box.dispatchEvent(new Event('input', {{bubbles:true}}));
-                    setTimeout(() => parent.document.querySelector('button[kind="primary"]').click(), 500);
-                    alert("SIGNED! Box filled — verifying...");
+                    box.dispatchEvent(new Event('input', {{bubbles: true}}));
+                    // AUTO-VERIFY
+                    setTimeout(() => parent.document.querySelector('button[kind="primary"]').click(), 600);
+                    alert("SIGNED! Box filled — balloons in 1 sec!");
                 }} catch (e) {{
                     alert("DON’T REJECT — click orange & SIGN!");
                 }}
@@ -59,34 +61,30 @@ with tab1:
             height=160,
         )
 
-        # ENABLED + AUTO-FILLED
         signature = st.text_input(
-            "Signature (auto-filled — you can Ctrl+V too)",
-            value="",  # starts empty
+            "Signature (auto-filled)",
+            value="",
             key="sig",
-            disabled=False  # ← NOW YOU CAN PASTE!
+            disabled=False
         )
 
         if st.button("VERIFY SIGNATURE", type="primary"):
-            if not signature or len(signature) < 100:
-                st.error("Click orange button first!")
-            else:
-                try:
-                    recovered = Account.recover_message(
-                        encode_defunct(text=st.session_state.message),
-                        signature=signature
-                    )
-                    if recovered.lower() == safe.lower():
-                        st.success(f"VERIFIED! {recovered[:8]}...{recovered[-6:]}")
-                        st.session_state.verified = True
-                        st.balloons()
-                    else:
-                        st.error("Wrong wallet")
-                except:
-                    st.error("Invalid signature")
+            try:
+                recovered = Account.recover_message(
+                    encode_defunct(text=st.session_state.message),
+                    signature=signature
+                )
+                if recovered.lower() == safe.lower():
+                    st.success("VERIFIED!")
+                    st.session_state.verified = True
+                    st.balloons()
+                else:
+                    st.error("Wrong wallet")
+            except:
+                st.error("Click orange first")
 
 with tab2:
     if st.session_state.get("verified"):
-        if st.button("CLAIM $500 EigenLayer", type="primary"):
+        if st.button("CLAIM $500", type="primary"):
             st.success("CLAIMED! TX: 0xMock{secrets.token_hex(8)}")
-            st.super_balloons()
+            st.balloons()
