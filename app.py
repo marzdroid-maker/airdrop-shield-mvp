@@ -11,7 +11,7 @@ st.title("🛡️ Airdrop Shield")
 st.caption("Recover airdrops from compromised wallets — safely.")
 
 # WalletConnect Project ID (FREE at walletconnect.com)
-PROJECT_ID = "YOUR_PROJECT_ID"  # Get free at https://cloud.walletconnect.com
+PROJECT_ID = "AirdropShield"  # Get free at https://cloud.walletconnect.com
 
 # WalletConnect Modal
 components.html(
