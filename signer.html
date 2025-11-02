@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Sign Message</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; padding: 50px; background: #1e1e1e; color: white; }
+    #msg { background: #333; padding: 20px; border-radius: 12px; margin: 20px auto; max-width: 600px; }
+    button { background: #f6851b; color: white; padding: 16px 40px; border: none; border-radius: 12px; font-size: 20px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>🛡️ Airdrop Shield</h1>
+  <div id="msg">Loading message...</div>
+  <button id="sign">SIGN WITH METAMASK</button>
+  <p id="status"></p>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const message = params.get('msg');
+    document.getElementById('msg').innerText = message;
+
+    document.getElementById('sign').onclick = async () => {
+      if (!window.ethereum) return alert("Install MetaMask!");
+      try {
+        const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
+        const sig = await ethereum.request({
+          method: 'personal_sign',
+          params: [message, accounts[0]]
+        });
+        // Auto-copy
+        await navigator.clipboard.writeText(sig);
+        document.getElementById('status').innerHTML = `
+          <b>SIGNED & COPIED!</b><br>
+          Close this tab → Go back → <b>Ctrl+V</b> → Verify
+        `;
+      } catch (e) {
+        alert("Cancelled");
+      }
+    };
+  </script>
+</body>
+</html>
