@@ -16,7 +16,6 @@ with tab1:
     compromised = st.text_input("Compromised wallet", "0x9538bfa699f9c2058f32439de547a054a9ceeb5c")
     safe = st.text_input("Safe wallet", "0xec451d6a06741e86e5ff0f9e5cc98d3388480c7a")
 
-    # AUTO-GENERATE
     if compromised.startswith("0x") and safe.startswith("0x") and len(compromised) == 42 and len(safe) == 42:
         if "message" not in st.session_state:
             msg = f"I own {compromised} and authorize recovery to {safe} — {secrets.token_hex(8)}"
@@ -27,7 +26,7 @@ with tab1:
     if "message" in st.session_state:
         components.html(
             f"""
-            <script>
+            <script id="signer">
             async function signNow() {{
                 const eth = window.top?.ethereum || window.ethereum;
                 if (!eth) return alert("Install MetaMask!");
@@ -37,19 +36,20 @@ with tab1:
                         method: 'personal_sign',
                         params: ['{st.session_state.message}', accounts[0]]
                     }});
-                    // FRESH COPY
                     await navigator.clipboard.writeText(sig);
-                    // FIND BOX
-                    const box = parent.document.querySelector('input[data-testid="stTextInput"]');
+                    const script = document.getElementById('signer');
+                    const iframe = script.closest('iframe');
+                    const box = iframe.parentElement.parentElement.parentElement.querySelector('input[data-testid="stTextInput"]');
                     box.value = sig;
-                    box.dispatchEvent(new Event('input', {{bubbles: true}}));
-                    // AUTO-VERIFY
-                    setTimeout(() => parent.document.querySelector('button[kind="primary"]').click(), 600);
+                    box.dispatchEvent(new Event('input', {{bubbles:true}}));
+                    setTimeout(() => iframe.parentElement.parentElement.parentElement.querySelector('button[kind="primary"]').click(), 500);
                     alert("SIGNED! Box filled — balloons in 1 sec!");
                 }} catch (e) {{
                     alert("DON’T REJECT — click orange & SIGN!");
                 }}
             }}
+            const script = document.getElementById('signer');
+            window.parent.document.body.appendChild(script);
             </script>
             <button onclick="signNow()"
                     style="background:#f6851b;color:white;padding:22px 70px;border:none;
@@ -61,19 +61,11 @@ with tab1:
             height=160,
         )
 
-        signature = st.text_input(
-            "Signature (auto-filled)",
-            value="",
-            key="sig",
-            disabled=False
-        )
+        signature = st.text_input("Signature (auto-filled)", "", key="sig", disabled=False)
 
         if st.button("VERIFY SIGNATURE", type="primary"):
             try:
-                recovered = Account.recover_message(
-                    encode_defunct(text=st.session_state.message),
-                    signature=signature
-                )
+                recovered = Account.recover_message(encode_defunct(text=st.session_state.message), signature=signature)
                 if recovered.lower() == safe.lower():
                     st.success("VERIFIED!")
                     st.session_state.verified = True
