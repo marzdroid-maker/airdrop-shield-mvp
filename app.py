@@ -14,34 +14,56 @@ tab1, tab2 = st.tabs(["Verify Wallet", "Claim Airdrop"])
 
 with tab1:
     st.subheader("Step 1: Verify Wallet Ownership")
-    compromised = st.text_input("Compromised wallet", "0x9538bfa699f9c2058f32439de547a054a9ceeb5c")
-    safe = st.text_input("Safe wallet", "0xec451d6a06741e86e5ff0f9e5cc98d3388480c7a")
+    compromised = st.text_input("Compromised wallet", value="0x9538bfa699f9c2058f32439de547a054a9ceeb5c")
+    safe = st.text_input("Safe wallet", value="0xec451d6a06741e86e5ff0f9e5cc98d3388480c7a")
 
     if st.button("Generate Message"):
         msg = f"I own {compromised} and authorize recovery to {safe} — {secrets.token_hex(8)}"
         st.session_state.message = msg
         st.code(msg)
-        st.success("Message ready!")
+        st.success("Ready! Click below → MetaMask → Sign → AUTO-VERIFIED")
 
     if "message" in st.session_state:
-        signer_url = f"signer.html?msg={st.session_state.message.replace(' ', '%20')}"
+        # ONE-CLICK SIGNER (no iframe, no sandbox)
         components.html(
             f"""
-            <script>window.open('{signer_url}', '_blank', 'width=700,height=600');</script>
-            <div style="text-align:center;padding:30px;background:#1e1e1e;border-radius:16px;color:white;">
-              <h3>✅ New tab opened!</h3>
-              <p>→ Click <b>SIGN WITH METAMASK</b></p>
-              <p>→ Close tab → <b>Ctrl+V</b> below</p>
-            </div>
+            <script>
+            async function oneClickSign() {{
+                if (!window.ethereum) return alert("Install MetaMask!");
+                try {{
+                    const accounts = await ethereum.request({{method: 'eth_requestAccounts'}});
+                    const sig = await ethereum.request({{
+                        method: 'personal_sign',
+                        params: ['{st.session_state.message}', accounts[0]]
+                    }});
+                    // AUTO-FILL
+                    const inputs = parent.document.querySelectorAll('input[data-testid="stTextInput"]');
+                    const box = inputs[inputs.length - 1];
+                    box.value = sig;
+                    box.dispatchEvent(new Event('input', {{bubbles: true}}));
+                    parent.document.querySelector('button[kind="primary"]').click(); // Auto-verify
+                }} catch (e) {{ alert("Cancelled"); }}
+            }}
+            </script>
+            <button onclick="oneClickSign()"
+                    style="background:#f6851b;color:white;padding:20px 60px;border:none;
+                           border-radius:16px;font-size:28px;cursor:pointer;font-weight:bold;
+                           box-shadow:0 8px 30px rgba(246,133,27,0.5);">
+                1-CLICK SIGN & VERIFY
+            </button>
             """,
-            height=200,
+            height=140,
         )
 
-        signature = st.text_input("PASTE SIGNATURE (Ctrl+V)", key="sig")
+        signature = st.text_input(
+            "Signature (auto-filled)",
+            key="sig",
+            disabled=True
+        )
 
-        if st.button("VERIFY SIGNATURE", type="primary"):
-            if not signature or len(signature) < 100:
-                st.error("Paste signature first!")
+        if st.button("VERIFY SIGNATURE", type="primary", key="verify_btn"):
+            if not signature:
+                st.warning("Click the orange button above")
             else:
                 try:
                     recovered = Account.recover_message(
@@ -55,7 +77,7 @@ with tab1:
                     else:
                         st.error("Wrong wallet")
                 except:
-                    st.error("Invalid signature")
+                    st.error("Invalid")
 
 with tab2:
     if not st.session_state.get("verified"):
