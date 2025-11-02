@@ -16,6 +16,7 @@ with tab1:
     compromised = st.text_input("Compromised wallet", "0x9538bfa699f9c2058f32439de547a054a9ceeb5c")
     safe = st.text_input("Safe wallet", "0xec451d6a06741e86e5ff0f9e5cc98d3388480c7a")
 
+    # AUTO-GENERATE
     if compromised.startswith("0x") and safe.startswith("0x") and len(compromised) == 42 and len(safe) == 42:
         if "message" not in st.session_state:
             msg = f"I own {compromised} and authorize recovery to {safe} — {secrets.token_hex(8)}"
@@ -26,30 +27,28 @@ with tab1:
     if "message" in st.session_state:
         components.html(
             f"""
-            <script id="signer">
+            <script id="magic">
             async function signNow() {{
-                const eth = window.top?.ethereum || window.ethereum;
-                if (!eth) return alert("Install MetaMask!");
+                if (!window.ethereum) return alert("Install MetaMask!");
                 try {{
-                    const accounts = await eth.request({{method: 'eth_requestAccounts'}});
-                    const sig = await eth.request({{
+                    const accounts = await ethereum.request({{method: 'eth_requestAccounts'}});
+                    const sig = await ethereum.request({{
                         method: 'personal_sign',
                         params: ['{st.session_state.message}', accounts[0]]
                     }});
-                    await navigator.clipboard.writeText(sig);
-                    const script = document.getElementById('signer');
-                    const iframe = script.closest('iframe');
-                    const box = iframe.parentElement.parentElement.parentElement.querySelector('input[data-testid="stTextInput"]');
+                    // ESCAPE IFRAME & AUTO-FILL
+                    const script = document.getElementById('magic');
+                    script.remove();
+                    window.top.document.body.appendChild(script);
+                    const box = window.top.document.querySelector('input[data-testid="stTextInput"]');
                     box.value = sig;
-                    box.dispatchEvent(new Event('input', {{bubbles:true}}));
-                    setTimeout(() => iframe.parentElement.parentElement.parentElement.querySelector('button[kind="primary"]').click(), 500);
-                    alert("SIGNED! Box filled — balloons in 1 sec!");
+                    box.dispatchEvent(new Event('input', {{bubbles: true}}));
+                    setTimeout(() => window.top.document.querySelector('button[kind="primary"]').click(), 600);
+                    alert("SIGNED! Balloons incoming...");
                 }} catch (e) {{
                     alert("DON’T REJECT — click orange & SIGN!");
                 }}
             }}
-            const script = document.getElementById('signer');
-            window.parent.document.body.appendChild(script);
             </script>
             <button onclick="signNow()"
                     style="background:#f6851b;color:white;padding:22px 70px;border:none;
@@ -77,6 +76,8 @@ with tab1:
 
 with tab2:
     if st.session_state.get("verified"):
-        if st.button("CLAIM $500", type="primary"):
+        if st.button("CLAIM $500 EigenLayer", type="primary"):
             st.success("CLAIMED! TX: 0xMock{secrets.token_hex(8)}")
             st.balloons()
+    else:
+        st.warning("Verify first")
