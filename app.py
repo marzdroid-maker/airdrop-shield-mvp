@@ -16,13 +16,13 @@ with tab1:
     st.subheader("Step 1: Verify Wallet Ownership")
 
     compromised = st.text_input("Compromised wallet", value="0x9538bfa699f9c2058f32439de547a054a9ceeb5c")
-    safe = st.text_input("Safe wallet (to receive funds)", value="0xec451d6a06741e86e5ff0f9e5cc98d3388480c7a")
+    safe = st.text_input("Safe wallet", value="0xec451d6a06741e86e5ff0f9e5cc98d3388480c7a")
 
     if st.button("Generate Message"):
         msg = f"I own {compromised} and authorize recovery to {safe} — {secrets.token_hex(8)}"
         st.session_state.message = msg
         st.code(msg)
-        st.info("Click below → Sign → **Paste (Ctrl+V) here**:")
+        st.success("✅ Message ready! Click below → Sign → **Ctrl+V**")
 
     if "message" in st.session_state:
         components.html(
@@ -38,28 +38,30 @@ with tab1:
                         params: ['{st.session_state.message}', accounts[0]]
                     }});
                     await navigator.clipboard.writeText(sig);
-                    alert("Signature copied! PASTE (Ctrl+V) below");
+                    alert("SIGNATURE COPIED!\\n\\nCLICK BOX → Ctrl+V → VERIFY");
                 }} catch (e) {{ alert("Cancelled"); }}
             }}
             </script>
             <button onclick="signAndCopy()"
-                    style="background:#f6851b;color:white;padding:16px 36px;border:none;
-                           border-radius:12px;font-size:20px;cursor:pointer;">
-                Sign with MetaMask
+                    style="background:#f6851b;color:white;padding:20px 50px;border:none;
+                           border-radius:16px;font-size:24px;cursor:pointer;font-weight:bold;
+                           box-shadow:0 4px 20px rgba(246,133,27,0.4);">
+                SIGN WITH METAMASK
             </button>
             """,
-            height=100,
+            height=130,
         )
 
         signature = st.text_input(
-            "Signature (PASTE HERE)",
-            placeholder="Ctrl+V to paste",
-            key="sig"
+            "PASTE SIGNATURE HERE",
+            placeholder="Click here → Ctrl+V",
+            key="sig",
+            help="After signing, paste with Ctrl+V"
         )
 
-        if st.button("Verify Signature"):
+        if st.button("VERIFY SIGNATURE", type="primary"):
             if not signature or len(signature) < 100:
-                st.error("Paste the signature first!")
+                st.error("Paste signature first!")
             else:
                 try:
                     recovered = Account.recover_message(
@@ -67,8 +69,9 @@ with tab1:
                         signature=signature
                     )
                     if recovered.lower() == safe.lower():
-                        st.success(f"VERIFIED! {recovered[:6]}...{recovered[-4:]}")
+                        st.success(f"VERIFIED! {recovered[:8]}...{recovered[-6:]}")
                         st.session_state.verified = True
+                        st.balloons()
                     else:
                         st.error("Wrong wallet")
                 except:
@@ -79,8 +82,8 @@ with tab2:
         st.warning("Verify first")
     else:
         drop = st.selectbox("Airdrop", ["EigenLayer ($500)", "Hyperliquid ($300)", "Linea ($200)"])
-        if st.button("Claim via Private Bundle"):
+        if st.button("CLAIM VIA PRIVATE BUNDLE", type="primary"):
             with st.spinner("Submitting..."):
                 time.sleep(2)
-            st.success(f"Claimed {drop}! TX: 0xMock{secrets.token_hex(8)}")
-            st.balloons()
+            st.success(f"CLAIMED {drop}! TX: 0xMock{secrets.token_hex(8)}")
+            st.super_balloons()
