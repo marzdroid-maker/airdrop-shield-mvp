@@ -1,4 +1,4 @@
-# app.py  —  THE FINAL VERSION  —
+# app.py — FINAL, BULLETPROOF VERSION
 import secrets
 import streamlit as st
 from eth_account import Account
@@ -24,39 +24,55 @@ with tab1:
             st.success("Ready — click orange!")
 
     if "message" in st.session_state:
-        st.markdown(
-            """
-            <button onclick="navigator.clipboard.writeText(''); 
-                ethereum.request({method:'eth_requestAccounts'}).then(a=> 
-                ethereum.request({method:'personal_sign',params:['"""+st.session_state.message+"""',a[0]]}))
-                .then(sig=>{navigator.clipboard.writeText(sig);alert('COPIED! Ctrl+V below')})"
-                style="background:#f6851b;color:white;padding:22px 70px;border:none;
-                       border-radius:16px;font-size:30px;cursor:pointer;font-weight:bold;">
-                1-CLICK SIGN & COPY
-            </button>
-            """,
-            unsafe_allow_html=True,
-        )
+        # THE MAGIC BUTTON
+        st.markdown(f"""
+        <button onclick="
+            if (!window.ethereum) {{ alert('Install MetaMask!'); return; }}
+            ethereum.request({{method:'eth_requestAccounts'}}).then(accounts =>
+                ethereum.request({{
+                    method:'personal_sign',
+                    params:['{st.session_state.message}', accounts[0]]
+                }})
+            ).then(sig => {{
+                const ta = document.createElement('textarea');
+                ta.value = sig;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                alert('COPIED! Ctrl+V below → Verify');
+            }}).catch(() => alert('DON’T REJECT — click orange & SIGN!'));
+        " style="background:#f6851b;color:white;padding:22px 70px;border:none;
+                 border-radius:16px;font-size:30px;cursor:pointer;font-weight:bold;
+                 box-shadow:0 10px 40px #f6851b88;">
+            1-CLICK SIGN & COPY
+        </button>
+        """, unsafe_allow_html=True)
 
         signature = st.text_input("PASTE HERE (Ctrl+V)", key="sig")
 
         if st.button("VERIFY SIGNATURE", type="primary"):
-            try:
-                recovered = Account.recover_message(
-                    encode_defunct(text=st.session_state.message),
-                    signature=signature
-                )
-                if recovered.lower() == safe.lower():
-                    st.success("VERIFIED!")
-                    st.session_state.verified = True
-                    st.balloons()
-                else:
-                    st.error("Wrong wallet")
-            except:
-                st.error("Paste signature first")
+            if not signature.startswith("0x") or len(signature) < 100:
+                st.error("Paste the signature first!")
+            else:
+                try:
+                    recovered = Account.recover_message(
+                        encode_defunct(text=st.session_state.message),
+                        signature=signature
+                    )
+                    if recovered.lower() == safe.lower():
+                        st.success("VERIFIED! 🎉")
+                        st.session_state.verified = True
+                        st.balloons()
+                    else:
+                        st.error("Wrong wallet signed")
+                except:
+                    st.error("Invalid signature")
 
 with tab2:
     if st.session_state.get("verified"):
-        if st.button("CLAIM $500", type="primary"):
+        if st.button("CLAIM $500 EigenLayer", type="primary"):
             st.success("CLAIMED! TX: 0xMock{secrets.token_hex(8)}")
             st.balloons()
+    else:
+        st.warning("Verify wallet first")
