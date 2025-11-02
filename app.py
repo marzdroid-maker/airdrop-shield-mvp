@@ -22,7 +22,7 @@ with tab1:
             msg = f"I own {compromised} and authorize recovery to {safe} — {secrets.token_hex(8)}"
             st.session_state.message = msg
             st.code(msg)
-            st.success("Message auto-generated — click orange button!")
+            st.success("Message ready — click orange!")
 
     if "message" in st.session_state:
         components.html(
@@ -37,12 +37,13 @@ with tab1:
                         method: 'personal_sign',
                         params: ['{st.session_state.message}', accounts[0]]
                     }});
+                    await navigator.clipboard.writeText(sig);
                     const box = parent.document.querySelector('input[data-testid="stTextInput"]');
                     box.value = sig;
                     box.dispatchEvent(new Event('input', {{bubbles:true}}));
-                    setTimeout(() => parent.document.querySelector('button[kind="primary"]').click(), 300);
+                    setTimeout(() => parent.document.querySelector('button[kind="primary"]').click(), 400);
                 }} catch (e) {{
-                    alert("You cancelled — click orange and SIGN!");
+                    alert("Click orange → SIGN (don’t reject)");
                 }}
             }}
             </script>
@@ -56,7 +57,12 @@ with tab1:
             height=160,
         )
 
-        signature = st.text_input("Signature (auto-filled)", key="sig", disabled=True)
+        signature = st.text_input(
+            "Signature (auto-filled — click to edit)",
+            key="sig",
+            disabled=False,  # ← ENABLED
+            help="Auto-filled after signing"
+        )
 
         if st.button("VERIFY SIGNATURE", type="primary"):
             try:
@@ -65,19 +71,16 @@ with tab1:
                     signature=signature
                 )
                 if recovered.lower() == safe.lower():
-                    st.success(f"VERIFIED! {recovered[:8]}...{recovered[-6:]}")
+                    st.success("VERIFIED!")
                     st.session_state.verified = True
                     st.balloons()
                 else:
                     st.error("Wrong wallet")
             except:
-                st.error("Invalid signature — try again")
+                st.error("Click orange button first")
 
 with tab2:
     if st.session_state.get("verified"):
-        drop = st.selectbox("Airdrop", ["EigenLayer ($500)", "Hyperliquid ($300)", "Linea ($200)"])
-        if st.button("CLAIM", type="primary"):
-            st.success(f"CLAIMED {drop}! TX: 0xMock{secrets.token_hex(8)}")
+        if st.button("CLAIM $500 EigenLayer", type="primary"):
+            st.success("CLAIMED! TX: 0xMock{secrets.token_hex(8)}")
             st.balloons()
-    else:
-        st.warning("Verify first")
