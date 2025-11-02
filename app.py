@@ -16,7 +16,7 @@ with tab1:
     st.subheader("Step 1: Verify Wallet Ownership")
 
     compromised = st.text_input("Compromised wallet", value="0x9538bfa699f9c2058f32439de547a054a9ceeb5c")
-    safe = st.text_input("Safe wallet", value="0xec451d6a06741e86e5ff0f9e5cc98d3388480c7a")
+    safe = st.text_input("Safe wallet (to receive funds)", value="0xec451d6a06741e86e5ff0f9e5cc98d3388480c7a")
 
     if st.button("Generate Message"):
         msg = f"I own {compromised} and authorize recovery to {safe} — {secrets.token_hex(8)}"
@@ -29,27 +29,37 @@ with tab1:
             f"""
             <script>
             async function signAndCopy() {{
-                const eth = window.top.ethereum || window.ethereum;
-                if (!eth) return alert("Install MetaMask!");
+                if (!window.ethereum) {{
+                    alert("Install MetaMask!");
+                    return;
+                }}
                 try {{
-                    const accounts = await eth.request({{method: 'eth_requestAccounts'}});
-                    const sig = await eth.request({{
+                    const accounts = await ethereum.request({{ method: 'eth_requestAccounts' }});
+                    const sig = await ethereum.request({{
                         method: 'personal_sign',
                         params: ['{st.session_state.message}', accounts[0]]
                     }});
-                    await navigator.clipboard.writeText(sig);
+                    // Force copy using textarea trick
+                    const textarea = document.createElement('textarea');
+                    textarea.value = sig;
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textarea);
                     alert("SIGNATURE COPIED!\\n\\nCLICK BOX → Ctrl+V → VERIFY");
-                }} catch (e) {{ alert("Cancelled"); }}
+                }} catch (e) {{
+                    alert("Cancelled or failed");
+                }}
             }}
             </script>
             <button onclick="signAndCopy()"
                     style="background:#f6851b;color:white;padding:20px 50px;border:none;
                            border-radius:16px;font-size:24px;cursor:pointer;font-weight:bold;
-                           box-shadow:0 4px 20px rgba(246,133,27,0.4);">
+                           box-shadow:0 6px 20px rgba(246,133,27,0.4);">
                 SIGN WITH METAMASK
             </button>
             """,
-            height=130,
+            height=140,
         )
 
         signature = st.text_input(
@@ -61,7 +71,7 @@ with tab1:
 
         if st.button("VERIFY SIGNATURE", type="primary"):
             if not signature or len(signature) < 100:
-                st.error("Paste signature first!")
+                st.error("Paste the signature first!")
             else:
                 try:
                     recovered = Account.recover_message(
@@ -73,7 +83,7 @@ with tab1:
                         st.session_state.verified = True
                         st.balloons()
                     else:
-                        st.error("Wrong wallet")
+                        st.error("Wrong wallet signed")
                 except:
                     st.error("Invalid signature")
 
@@ -86,4 +96,4 @@ with tab2:
             with st.spinner("Submitting..."):
                 time.sleep(2)
             st.success(f"CLAIMED {drop}! TX: 0xMock{secrets.token_hex(8)}")
-            st.super_balloons()
+            st.balloons()
