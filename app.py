@@ -1,7 +1,6 @@
-# app.py
+# app.py  —  THE FINAL VERSION  —
 import secrets
 import streamlit as st
-import streamlit.components.v1 as components
 from eth_account import Account
 from eth_account.messages import encode_defunct
 
@@ -25,46 +24,28 @@ with tab1:
             st.success("Ready — click orange!")
 
     if "message" in st.session_state:
-        components.html(
-            f"""
-            <script id="magic">
-            async function signNow() {{
-                if (!window.ethereum) return alert("Install MetaMask!");
-                try {{
-                    const accounts = await ethereum.request({{method: 'eth_requestAccounts'}});
-                    const sig = await ethereum.request({{
-                        method: 'personal_sign',
-                        params: ['{st.session_state.message}', accounts[0]]
-                    }});
-                    // ESCAPE IFRAME & AUTO-FILL
-                    const script = document.getElementById('magic');
-                    script.remove();
-                    window.top.document.body.appendChild(script);
-                    const box = window.top.document.querySelector('input[data-testid="stTextInput"]');
-                    box.value = sig;
-                    box.dispatchEvent(new Event('input', {{bubbles: true}}));
-                    setTimeout(() => window.top.document.querySelector('button[kind="primary"]').click(), 600);
-                    alert("SIGNED! Balloons incoming...");
-                }} catch (e) {{
-                    alert("DON’T REJECT — click orange & SIGN!");
-                }}
-            }}
-            </script>
-            <button onclick="signNow()"
-                    style="background:#f6851b;color:white;padding:22px 70px;border:none;
-                           border-radius:16px;font-size:30px;cursor:pointer;font-weight:bold;
-                           box-shadow:0 10px 40px #f6851b88;">
-                1-CLICK SIGN & VERIFY
+        st.markdown(
+            """
+            <button onclick="navigator.clipboard.writeText(''); 
+                ethereum.request({method:'eth_requestAccounts'}).then(a=> 
+                ethereum.request({method:'personal_sign',params:['"""+st.session_state.message+"""',a[0]]}))
+                .then(sig=>{navigator.clipboard.writeText(sig);alert('COPIED! Ctrl+V below')})"
+                style="background:#f6851b;color:white;padding:22px 70px;border:none;
+                       border-radius:16px;font-size:30px;cursor:pointer;font-weight:bold;">
+                1-CLICK SIGN & COPY
             </button>
             """,
-            height=160,
+            unsafe_allow_html=True,
         )
 
-        signature = st.text_input("Signature (auto-filled)", "", key="sig", disabled=False)
+        signature = st.text_input("PASTE HERE (Ctrl+V)", key="sig")
 
         if st.button("VERIFY SIGNATURE", type="primary"):
             try:
-                recovered = Account.recover_message(encode_defunct(text=st.session_state.message), signature=signature)
+                recovered = Account.recover_message(
+                    encode_defunct(text=st.session_state.message),
+                    signature=signature
+                )
                 if recovered.lower() == safe.lower():
                     st.success("VERIFIED!")
                     st.session_state.verified = True
@@ -72,12 +53,10 @@ with tab1:
                 else:
                     st.error("Wrong wallet")
             except:
-                st.error("Click orange first")
+                st.error("Paste signature first")
 
 with tab2:
     if st.session_state.get("verified"):
-        if st.button("CLAIM $500 EigenLayer", type="primary"):
+        if st.button("CLAIM $500", type="primary"):
             st.success("CLAIMED! TX: 0xMock{secrets.token_hex(8)}")
             st.balloons()
-    else:
-        st.warning("Verify first")
