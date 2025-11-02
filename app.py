@@ -10,50 +10,6 @@ st.set_page_config(page_title="Airdrop Shield", page_icon="🛡️", layout="cen
 st.title("🛡️ Airdrop Shield")
 st.caption("Recover airdrops from compromised wallets — safely.")
 
-# WalletConnect Project ID (FREE at walletconnect.com)
-PROJECT_ID = "eb8e10ab1dab5a02235593245d45c272"  # Get free at https://cloud.walletconnect.com
-
-# WalletConnect Modal
-components.html(
-    f"""
-    <script src="https://unpkg.com/@walletconnect/modal@2"></script>
-    <script>
-    const modal = new WalletConnect.Modal({{
-        projectId: '{PROJECT_ID}',
-        metadata: {{
-            name: 'Airdrop Shield',
-            description: 'Recover airdrops safely',
-            url: window.location.href,
-            icons: ['https://avatars.githubusercontent.com/u/37784886']
-        }}
-    }});
-
-    async function connectAndSign(message) {{
-        try {{
-            const {{ accounts }} = await modal.connect({{
-                requiredNamespaces: {{ eip155: {{ chains: ['eip155:1'], methods: ['personal_sign'] }} }}
-            }});
-            const sig = await modal.request({{
-                chainId: 'eip155:1',
-                request: {{ method: 'personal_sign', params: [message, accounts[0]] }}
-            }});
-            // Auto-fill
-            const inputs = parent.document.querySelectorAll('input[data-testid="stTextInput"]');
-            const sigInput = inputs[inputs.length - 1];
-            if (sigInput) {{
-                sigInput.value = sig;
-                sigInput.dispatchEvent(new Event('input', {{bubbles: true}}));
-                alert("Signed & auto-filled!");
-            }}
-        }} catch (e) {{
-            alert("Cancelled");
-        }}
-    }}
-    </script>
-    """,
-    height=0,
-)
-
 tab1, tab2 = st.tabs(["Verify Wallet", "Claim Airdrop"])
 
 with tab1:
@@ -65,24 +21,27 @@ with tab1:
         msg = f"I own {compromised} and authorize recovery to {safe} — {secrets.token_hex(8)}"
         st.session_state.message = msg
         st.code(msg)
-        st.success("Ready! Click below → Connect any wallet → Sign")
+        st.success("Message ready!")
 
     if "message" in st.session_state:
-        if st.button("Connect Wallet & Sign", type="primary"):
-            components.html(
-                f"<script>connectAndSign(`{st.session_state.message}`)</script>",
-                height=0,
-            )
-
-        signature = st.text_input(
-            "Signature (auto-filled)",
-            key="sig",
-            disabled=True
+        signer_url = f"signer.html?msg={st.session_state.message.replace(' ', '%20')}"
+        components.html(
+            f"""
+            <script>window.open('{signer_url}', '_blank', 'width=700,height=600');</script>
+            <div style="text-align:center;padding:30px;background:#1e1e1e;border-radius:16px;color:white;">
+              <h3>✅ New tab opened!</h3>
+              <p>→ Click <b>SIGN WITH METAMASK</b></p>
+              <p>→ Close tab → <b>Ctrl+V</b> below</p>
+            </div>
+            """,
+            height=200,
         )
 
-        if st.button("Verify Signature"):
-            if not signature:
-                st.warning("Sign first")
+        signature = st.text_input("PASTE SIGNATURE (Ctrl+V)", key="sig")
+
+        if st.button("VERIFY SIGNATURE", type="primary"):
+            if not signature or len(signature) < 100:
+                st.error("Paste signature first!")
             else:
                 try:
                     recovered = Account.recover_message(
@@ -96,7 +55,7 @@ with tab1:
                     else:
                         st.error("Wrong wallet")
                 except:
-                    st.error("Invalid")
+                    st.error("Invalid signature")
 
 with tab2:
     if not st.session_state.get("verified"):
