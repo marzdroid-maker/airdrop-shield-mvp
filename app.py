@@ -15,8 +15,10 @@ tab1, tab2 = st.tabs(["Verify", "Claim"])
 
 with tab1:
     st.subheader("Step 1: Prove you control the compromised wallet")
-    compromised = st.text_input("Compromised wallet", "0x9538bfa699f9c2058f32439de547a054a9ceeb5c")
-    safe = st.text_input("Safe wallet", "0xec451d6a06741e86e5ff0f9e5cc98d3388480c7a")
+    # --- CHANGED: Using placeholder instead of default value ---
+    compromised = st.text_input("Compromised wallet", placeholder="0x...")
+    safe = st.text_input("Safe wallet", placeholder="0x...")
+    # -----------------------------------------------------------
 
     # Message Generation Logic
     if compromised.startswith("0x") and safe.startswith("0x") and len(compromised) == 42 and len(safe) == 42:
