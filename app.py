@@ -1,4 +1,5 @@
-# app.py — FINAL — DETECTS METAMASK EVERY TIME
+
+# app.py — THE ONE THAT WORKS FOR EVERYONE
 import secrets
 import streamlit as st
 from eth_account import Account
@@ -15,6 +16,7 @@ with tab1:
     compromised = st.text_input("Compromised wallet", "0x9538bfa699f9c2058f32439de547a054a9ceeb5c")
     safe = st.text_input("Safe wallet", "0xec451d6a06741e86e5ff0f9e5cc98d3388480c7a")
 
+    # AUTO-GENERATE
     if compromised.startswith("0x") and safe.startswith("0x") and len(compromised) == 42 and len(safe) == 42:
         if "message" not in st.session_state:
             msg = f"I control {compromised} and authorize recovery to {safe} — {secrets.token_hex(8)}"
@@ -23,37 +25,39 @@ with tab1:
             st.success("Ready — click orange!")
 
     if "message" in st.session_state:
+        # MAGIC BUTTON — NO CLIPBOARD, NO PASTE
         st.components.v1.html(f"""
         <script>
-        function sign() {{
-            // DETECT METAMASK EVERYWHERE
-            const eth = window.ethereum || window.top?.ethereum || window.web3?.currentProvider;
-            if (!eth) {{
-                alert("MetaMask not found!\\n\\n1. Install: metamask.io\\n2. Refresh page\\n3. Click orange again");
-                return;
-            }}
-            eth.request({{method:'eth_requestAccounts'}}).then(a =>
-                eth.request({{method:'personal_sign', params:['{st.session_state.message}', a[0]]}})
-            ).then(sig => {{
-                navigator.clipboard.writeText(sig);
-                alert("SIGNED & COPIED!\\n\\nCtrl+V below → Verify");
-            }}).catch(() => alert("DON’T REJECT — click orange & SIGN!"));
+        async function magic() {{
+            const eth = window.ethereum || (window.top && window.top.ethereum);
+            if (!eth) return alert("MetaMask not found — install it!");
+            try {{
+                const [addr] = await eth.request({{method: 'eth_requestAccounts'}});
+                const sig = await eth.request({{method: 'personal_sign', params: ['{st.session_state.message}', addr]}});
+                // AUTO-FILL + AUTO-VERIFY
+                const box = parent.document.querySelector('input[data-testid="stTextInput"]');
+                box.value = addr + '|' + sig;
+                box.dispatchEvent(new Event('input', {{bubbles: true}}));
+                setTimeout(() => parent.document.querySelector('button[kind="primary"]').click(), 400);
+            }} catch {{ alert("DON’T REJECT — click orange & SIGN!"); }}
         }}
         </script>
-        <button onclick="sign()" 
+        <button onclick="magic()" 
                 style="background:#f6851b;color:white;padding:22px 70px;border:none;
                        border-radius:16px;font-size:30px;cursor:pointer;font-weight:bold;
                        box-shadow:0 10px 40px #f6851b88;">
-            1-CLICK SIGN & COPY
+            1-CLICK SIGN & VERIFY
         </button>
         """, height=160)
 
-        sig = st.text_input("PASTE HERE (Ctrl+V)", key="sig", placeholder="0x...")
+        # HIDDEN FIELD — auto-filled by JS
+        signature = st.text_input("Signature", value="", key="sig", disabled=True, label_visibility="collapsed")
 
         if st.button("VERIFY", type="primary"):
-            if not sig or len(sig) < 100:
-                st.error("Click orange → SIGN → Ctrl+V")
+            if '|' not in signature:
+                st.error("Click orange button first")
             else:
+                addr, sig = signature.split('|', 1)
                 try:
                     recovered = Account.recover_message(encode_defunct(text=st.session_state.message), signature=sig)
                     if recovered.lower() == compromised.lower():
@@ -61,9 +65,9 @@ with tab1:
                         st.session_state.verified = True
                         st.balloons()
                     else:
-                        st.error("Sign with the **COMPROMISED** wallet")
+                        st.error("Wrong wallet")
                 except:
-                    st.error("Invalid signature")
+                    st.error("Invalid")
 
 with tab2:
     if st.session_state.get("verified"):
