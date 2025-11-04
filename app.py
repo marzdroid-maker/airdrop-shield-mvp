@@ -1,4 +1,4 @@
-# app.py — FINAL — 100% RELIABLE SIGNING (NO JS, NO IFRAME)
+# app.py — FINAL — 100% RELIABLE, NO JS, NO GREEN BOX
 import secrets
 import streamlit as st
 from eth_account import Account
@@ -18,8 +18,6 @@ if "verified" not in st.session_state:
     st.session_state.verified = False
 if "message" not in st.session_state:
     st.session_state.message = ""
-if "signature" not in st.session_state:
-    st.session_state.signature = ""
 
 tab1, tab2 = st.tabs(["Verify Ownership", "Execute Claim"])
 
@@ -38,37 +36,31 @@ with tab1:
         if not st.session_state.message:
             st.session_state.message = f"I control {compromised} and authorize recovery to {safe} — {secrets.token_hex(8)}"
             st.code(st.session_state.message)
-            st.success("Message ready — click below to sign")
+            st.success("Ready — follow steps below")
 
     if st.session_state.message:
-        # --- SIGN BUTTON ---
-        if st.button("1-CLICK SIGN WITH METAMASK", type="secondary", use_container_width=True):
-            st.session_state.pending_sign = True
-            st.rerun()
+        st.markdown("### How to Sign (No JS):")
+        st.info("1. **Copy the message below**\n2. Open **MetaMask**\n3. Click **Sign** → **Paste message** → **Sign**\n4. **Copy the signature** → paste below")
 
-        # --- SHOW SIGNATURE BOX IF SIGNED ---
-        if st.session_state.get("signature"):
-            st.success("Signature received!")
-            st.code(st.session_state.signature, language="text")
-            st.info("Copy the above signature → paste below → VERIFY")
+        # Message to copy
+        st.code(st.session_state.message, language="text")
 
-        # --- PASTE FIELD ---
-        sig_input = st.text_input(
+        # Paste signature
+        sig = st.text_input(
             "Paste Signature Here",
-            value=st.session_state.signature if st.session_state.get("signature") else "",
-            key="sig_input",
-            placeholder="Ctrl+V from above"
+            placeholder="0x...",
+            key="sig"
         )
 
-        # --- VERIFY ---
+        # Verify
         if st.button("VERIFY", type="primary"):
-            if not sig_input or len(sig_input) < 100:
-                st.error("Paste the full signature.")
+            if not sig or len(sig) < 100:
+                st.error("Paste the full signature from MetaMask.")
             else:
                 try:
                     recovered = Account.recover_message(
                         encode_defunct(text=st.session_state.message),
-                        signature=sig_input
+                        signature=sig
                     )
                     if recovered.lower() == compromised.lower():
                         st.success("VERIFIED — You control the compromised wallet!")
@@ -77,17 +69,7 @@ with tab1:
                     else:
                         st.error("Wrong wallet. Use the **COMPROMISED** wallet.")
                 except:
-                    st.error("Invalid signature.")
-
-    # --- METAMASK SIGNING INSTRUCTIONS (NO JS) ---
-    if st.session_state.get("pending_sign"):
-        st.warning("Open MetaMask → Sign this message:")
-        st.code(st.session_state.message)
-        sig = st.text_input("PASTE SIGNATURE HERE AFTER SIGNING IN METAMASK", key="manual_sig")
-        if sig:
-            st.session_state.signature = sig
-            st.session_state.pending_sign = False
-            st.rerun()
+                    st.error("Invalid signature. Copy the FULL output from MetaMask.")
 
 # ========================================
 # TAB 2: EXECUTE CLAIM
@@ -99,7 +81,12 @@ with tab2:
         st.success("Verified. Ready to execute your claim.")
         st.markdown("---")
 
-        claim_method = st.radio("Provide claim", ["Paste Claim Link", "Enter Contract Address"], horizontal=True)
+        claim_method = st.radio(
+            "Provide claim",
+            ["Paste Claim Link", "Enter Contract Address"],
+            horizontal=True
+        )
+
         claim_input = st.text_input(
             "Claim Link" if claim_method == "Paste Claim Link" else "Contract Address",
             placeholder="https://..." if claim_method == "Paste Claim Link" else "0x..."
