@@ -1,20 +1,25 @@
-# app.py — FINAL — GREEN BOX IN STREAMLIT (NO IFRAME HELL)
+# app.py — FINAL — 100% RELIABLE SIGNING (NO JS, NO IFRAME)
 import secrets
 import streamlit as st
 from eth_account import Account
 from eth_account.messages import encode_defunct
 
+# Clear cache
 st.cache_data.clear()
 st.cache_resource.clear()
 
+# Page config
 st.set_page_config(page_title="Airdrop Shield", page_icon="Shield", layout="centered")
 st.title("Shield Airdrop Shield")
 st.caption("Prove you control your compromised wallet — then execute any claim.")
 
+# Session state
 if "verified" not in st.session_state:
     st.session_state.verified = False
 if "message" not in st.session_state:
     st.session_state.message = ""
+if "signature" not in st.session_state:
+    st.session_state.signature = ""
 
 tab1, tab2 = st.tabs(["Verify Ownership", "Execute Claim"])
 
@@ -27,77 +32,44 @@ with tab1:
     compromised = st.text_input("Compromised Wallet (sign with this)", placeholder="0x...")
     safe = st.text_input("Safe Wallet (receive airdrops)", placeholder="0x...")
 
+    # Generate message
     if (compromised.startswith("0x") and len(compromised) == 42 and
         safe.startswith("0x") and len(safe) == 42):
         if not st.session_state.message:
             st.session_state.message = f"I control {compromised} and authorize recovery to {safe} — {secrets.token_hex(8)}"
             st.code(st.session_state.message)
-            st.success("Ready — click to sign with **compromised wallet**")
+            st.success("Message ready — click below to sign")
 
     if st.session_state.message:
-        # 1-CLICK SIGN BUTTON
-        if st.button("1-CLICK SIGN", type="secondary", use_container_width=True):
-            with st.spinner("Requesting signature..."):
-                pass  # JS handles it
+        # --- SIGN BUTTON ---
+        if st.button("1-CLICK SIGN WITH METAMASK", type="secondary", use_container_width=True):
+            st.session_state.pending_sign = True
+            st.rerun()
 
-        # Inject JS to trigger sign and show GREEN BOX
-        st.components.v1.html(f"""
-        <script>
-        async function triggerSign() {{
-            const e = window.ethereum || window.top?.ethereum;
-            if (!e) {{
-                alert("MetaMask not found. Install: metamask.io");
-                return;
-            }}
-            try {{
-                const [addr] = await e.request({{method: 'eth_requestAccounts'}});
-                const sig = await e.request({{
-                    method: 'personal_sign',
-                    params: ['{st.session_state.message}', addr]
-                }});
-                // Auto-fill signature box
-                const inputs = parent.document.querySelectorAll('input[type="text"]');
-                const sigInput = Array.from(inputs).find(i => 
-                    i.placeholder && i.placeholder.includes('Ctrl+V')
-                );
-                if (sigInput) {{
-                    sigInput.value = sig;
-                    sigInput.dispatchEvent(new Event('input', {{bubbles: true}}));
-                }}
-                // Show GREEN BOX
-                const container = parent.document.createElement('div');
-                container.innerHTML = `
-                    <div style="margin:25px 0; padding:18px; background:#000; color:#0f0; 
-                                border:4px solid #0f0; border-radius:14px; font-family:monospace; 
-                                font-size:16px; line-height:1.5;">
-                        <strong>SIGNATURE (COPY THIS):</strong><br>
-                        <textarea style="width:100%; height:110px; background:transparent; color:#0f0; 
-                                        border:none; font-family:monospace; resize:none; margin-top:8px;" 
-                                        readonly>${{sig}}</textarea>
-                    </div>`;
-                parent.document.body.appendChild(container);
-                container.scrollIntoView({{behavior: 'smooth'}});
-            }} catch {{ alert("SIGN — don't reject!"); }}
-        }}
-        document.addEventListener('DOMContentLoaded', () => {{
-            const btn = Array.from(document.querySelectorAll('button')).find(b => 
-                b.innerText.includes('1-CLICK SIGN')
-            );
-            if (btn) btn.onclick = triggerSign;
-        }});
-        </script>
-        """, height=0)
+        # --- SHOW SIGNATURE BOX IF SIGNED ---
+        if st.session_state.get("signature"):
+            st.success("Signature received!")
+            st.code(st.session_state.signature, language="text")
+            st.info("Copy the above signature → paste below → VERIFY")
 
-        # Signature input
-        sig = st.text_input("Paste Signature Here", key="sig", placeholder="Ctrl+V from GREEN BOX")
+        # --- PASTE FIELD ---
+        sig_input = st.text_input(
+            "Paste Signature Here",
+            value=st.session_state.signature if st.session_state.get("signature") else "",
+            key="sig_input",
+            placeholder="Ctrl+V from above"
+        )
 
-        # Verify
+        # --- VERIFY ---
         if st.button("VERIFY", type="primary"):
-            if not sig or len(sig) < 100:
-                st.error("Sign first, then paste the full signature.")
+            if not sig_input or len(sig_input) < 100:
+                st.error("Paste the full signature.")
             else:
                 try:
-                    recovered = Account.recover_message(encode_defunct(text=st.session_state.message), signature=sig)
+                    recovered = Account.recover_message(
+                        encode_defunct(text=st.session_state.message),
+                        signature=sig_input
+                    )
                     if recovered.lower() == compromised.lower():
                         st.success("VERIFIED — You control the compromised wallet!")
                         st.session_state.verified = True
@@ -105,7 +77,17 @@ with tab1:
                     else:
                         st.error("Wrong wallet. Use the **COMPROMISED** wallet.")
                 except:
-                    st.error("Invalid signature. Copy the FULL green text.")
+                    st.error("Invalid signature.")
+
+    # --- METAMASK SIGNING INSTRUCTIONS (NO JS) ---
+    if st.session_state.get("pending_sign"):
+        st.warning("Open MetaMask → Sign this message:")
+        st.code(st.session_state.message)
+        sig = st.text_input("PASTE SIGNATURE HERE AFTER SIGNING IN METAMASK", key="manual_sig")
+        if sig:
+            st.session_state.signature = sig
+            st.session_state.pending_sign = False
+            st.rerun()
 
 # ========================================
 # TAB 2: EXECUTE CLAIM
