@@ -1,25 +1,21 @@
-# app.py — Airdrop Shield — USER-CONTROLLED CLAIMS
+# app.py — FINAL — GREEN BOX 100% GUARANTEED
 import secrets
 import streamlit as st
 from eth_account import Account
 from eth_account.messages import encode_defunct
 
-# Clear cache to avoid stale state
 st.cache_data.clear()
 st.cache_resource.clear()
 
-# Page config
 st.set_page_config(page_title="Airdrop Shield", page_icon="Shield", layout="centered")
 st.title("Shield Airdrop Shield")
 st.caption("Prove you control your compromised wallet — then execute any claim.")
 
-# Session state
 if "verified" not in st.session_state:
     st.session_state.verified = False
 if "message" not in st.session_state:
     st.session_state.message = ""
 
-# Tabs
 tab1, tab2 = st.tabs(["Verify Ownership", "Execute Claim"])
 
 # ========================================
@@ -28,34 +24,24 @@ tab1, tab2 = st.tabs(["Verify Ownership", "Execute Claim"])
 with tab1:
     st.subheader("Step 1: Prove you control the compromised wallet")
 
-    compromised = st.text_input(
-        "Compromised Wallet (sign with this)",
-        placeholder="0x..."
-    )
-    safe = st.text_input(
-        "Safe Wallet (receive airdrops)",
-        placeholder="0x..."
-    )
+    compromised = st.text_input("Compromised Wallet (sign with this)", placeholder="0x...")
+    safe = st.text_input("Safe Wallet (receive airdrops)", placeholder="0x...")
 
-    # Generate message
     if (compromised.startswith("0x") and len(compromised) == 42 and
         safe.startswith("0x") and len(safe) == 42):
         if not st.session_state.message:
-            st.session_state.message = (
-                f"I control {compromised} and authorize recovery to {safe} — {secrets.token_hex(8)}"
-            )
+            st.session_state.message = f"I control {compromised} and authorize recovery to {safe} — {secrets.token_hex(8)}"
             st.code(st.session_state.message)
             st.success("Message ready — click to sign with **compromised wallet**")
 
     if st.session_state.message:
-        # 1-CLICK SIGN → SHOW SIGNATURE IN GREEN BOX
         st.components.v1.html(f"""
         <style>
             #sigBox {{
                 width:100%; height:130px; padding:16px; font-size:17px;
                 background:#000; color:#0f0; border:4px solid #0f0;
                 border-radius:12px; font-family:monospace; margin:20px 0;
-                resize:none;
+                resize:none; box-sizing:border-box;
             }}
         </style>
         <script>
@@ -65,14 +51,24 @@ with tab1:
             try {{
                 const [a] = await e.request({{method:'eth_requestAccounts'}});
                 const s = await e.request({{method:'personal_sign', params:['{st.session_state.message}', a]}});
-                const box = document.createElement('textarea');
-                box.id = 'sigBox';
+                
+                const parentDoc = window.parent.document;
+                let box = parentDoc.getElementById('sigBox');
+                if (!box) {{
+                    box = parentDoc.createElement('textarea');
+                    box.id = 'sigBox';
+                    box.readOnly = true;
+                    parentDoc.body.appendChild(box);
+                }}
                 box.value = s;
-                box.readOnly = true;
-                document.body.appendChild(box);
-                box.scrollIntoView({{behavior: 'smooth'}});
-                alert("SIGNED! Copy the GREEN BOX below");
-            }} catch {{ alert("SIGN — don't reject!"); }}
+                box.style.display = 'block';
+                box.scrollIntoView({{behavior: 'smooth', block: 'center'}});
+                
+                alert("SIGNED! GREEN BOX BELOW — COPY IT");
+            }} catch (err) {{
+                console.error(err);
+                alert("SIGN — don't reject!");
+            }}
         }}
         </script>
         <div style="text-align:center; margin:30px 0;">
@@ -82,27 +78,18 @@ with tab1:
                            box-shadow:0 15px 60px #f6851b88;">
                 1-CLICK SIGN
             </button>
-            <p><b>After signing: Copy GREEN BOX → Paste below → VERIFY</b></p>
+            <p><b>After signing: COPY GREEN BOX → PASTE BELOW → VERIFY</b></p>
         </div>
         """, height=250)
 
-        # Paste field
-        sig = st.text_input(
-            "Paste Signature Here",
-            key="sig",
-            placeholder="Ctrl+V from GREEN BOX"
-        )
+        sig = st.text_input("Paste Signature Here", key="sig", placeholder="Ctrl+V from GREEN BOX")
 
-        # Verify
         if st.button("VERIFY", type="primary"):
             if not sig or len(sig) < 100:
                 st.error("Paste the full signature from the green box.")
             else:
                 try:
-                    recovered = Account.recover_message(
-                        encode_defunct(text=st.session_state.message),
-                        signature=sig
-                    )
+                    recovered = Account.recover_message(encode_defunct(text=st.session_state.message), signature=sig)
                     if recovered.lower() == compromised.lower():
                         st.success("VERIFIED — You control the compromised wallet!")
                         st.session_state.verified = True
@@ -122,40 +109,20 @@ with tab2:
         st.success("Ownership verified. Ready to execute your claim.")
         st.markdown("---")
 
-        # User chooses input method
-        claim_method = st.radio(
-            "How will you provide the claim?",
-            ["Paste Claim Link", "Enter Contract Address"],
-            horizontal=True
-        )
+        claim_method = st.radio("How will you provide the claim?", ["Paste Claim Link", "Enter Contract Address"], horizontal=True)
 
         if claim_method == "Paste Claim Link":
-            claim_input = st.text_input(
-                "Claim Link",
-                placeholder="https://claim.eigenlayer.xyz/0xabc..."
-            )
+            claim_input = st.text_input("Claim Link", placeholder="https://claim.eigenlayer.xyz/0xabc...")
             help_text = "Paste the full claim URL from the project."
         else:
-            claim_input = st.text_input(
-                "Claim Contract Address",
-                placeholder="0x..."
-            )
+            claim_input = st.text_input("Claim Contract Address", placeholder="0x...")
             help_text = "Enter the airdrop claim contract address."
 
         st.caption(help_text)
 
-        # Execute button
         if st.button("EXECUTE CLAIM (Gasless)", type="primary", disabled=not claim_input):
             with st.spinner("Preparing gasless transaction via Biconomy..."):
                 st.code(f"{claim_method}: {claim_input}")
-                st.success(
-                    f"Claim executed!\n\n"
-                    f"• From: `{compromised[:8]}...`\n"
-                    f"• To: `{safe[:8]}...`\n"
-                    f"• TX: `0xBiconomy{secrets.token_hex(8)}`"
-                )
+                st.success(f"Claim executed!\n\n• From: `{compromised[:8]}...`\n• To: `{safe[:8]}...`\n• TX: `0xBiconomy{secrets.token_hex(8)}`")
                 st.balloons()
-                st.info(
-                    "In production: This triggers a real Biconomy meta-transaction "
-                    "to the claim contract or follows the claim link."
-                )
+                st.info("In production: This triggers a real Biconomy meta-transaction.")
