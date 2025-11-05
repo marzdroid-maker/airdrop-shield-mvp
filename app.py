@@ -3,28 +3,26 @@ import streamlit as st
 from eth_account import Account
 from eth_account.messages import encode_defunct
 
-# Clear cache is generally not recommended in production as it impacts performance,
-# but it's fine for rapid testing of state changes.
-# st.cache_data.clear() # Keeping commented out for better performance if deployed
+# st.cache_data.clear() # Keeping this commented out for better performance
 st.set_page_config(page_title="Airdrop Shield", page_icon="🛡️")
 st.title("🛡️ Airdrop Shield")
 
 # --- Initialize State ---
 if "verified" not in st.session_state:
     st.session_state.verified = False
+if "message" not in st.session_state:
+    st.session_state.message = None
 if "compromised_wallet" not in st.session_state:
     st.session_state.compromised_wallet = None
 if "safe_wallet" not in st.session_state:
     st.session_state.safe_wallet = None
-if "message" not in st.session_state:
-    st.session_state.message = None
 
 # --- Tabs ---
 tab1, tab2 = st.tabs(["Verify", "Claim"])
 
 with tab1:
     st.subheader("Step 1: Prove Control")
-    # Use different keys for the input boxes to prevent issues with session state
+    # Use the session state values to populate the inputs if they exist
     compromised_input = st.text_input("Compromised wallet (to claim from)", 
                                       value=st.session_state.compromised_wallet or "", 
                                       key="compromised_input", 
@@ -34,30 +32,41 @@ with tab1:
                                key="safe_input", 
                                placeholder="0x...")
 
-    # Check for valid address format and generate message
+    # Validate addresses and GENERATE/STABILIZE the message
     if compromised_input.startswith("0x") and len(compromised_input) == 42 and \
        safe_input.startswith("0x") and len(safe_input) == 42:
-
-        # Only generate a new message if the wallets have changed or no message exists
+        
+        # KEY STABILITY CHECK: Regenerate the message ONLY if the addresses change 
+        # OR if the message hasn't been created yet. This prevents re-signing 
+        # with a new nonce if the user simply interacts with the page.
         if st.session_state.compromised_wallet != compromised_input or \
            st.session_state.safe_wallet != safe_input or \
            st.session_state.message is None:
-            # Generate a new unique message for signing
-            st.session_state.message = f"I control {compromised_input} and authorize recovery to {safe_input} — {secrets.token_hex(8)}"
-            # Reset verification status if wallets change
+            
+            # --- Reset Verification State ---
             st.session_state.verified = False
+            # Generate a new unique message for signing
+            # NOTE: We use the current input values for the message
+            st.session_state.message = f"I control {compromised_input} and authorize recovery to {safe_input} — {secrets.token_hex(8)}"
+            
+            # Reset persisted wallets to force re-verification if inputs change
             st.session_state.compromised_wallet = None
             st.session_state.safe_wallet = None
+            
+            # Also reset the signature input field to force a fresh paste
+            if 'sig' in st.session_state:
+                 st.session_state.sig = ""
+
 
         st.code(st.session_state.message)
         st.success("Ready — Click the orange button to sign!")
 
         # --- MetaMask Signing HTML Component ---
+        # The key here is passing the current st.session_state.message into the JS
         st.components.v1.html(f"""
         <style>
             /* CSS for the signature box */
             #sigBox {{
-                /* ... your existing CSS ... */
                 position: fixed;
                 bottom: 20px;
                 left: 50%;
@@ -85,7 +94,7 @@ with tab1:
             if (!e) return alert("Install MetaMask!");
             try {{
                 const [a] = await e.request({{method:'eth_requestAccounts'}});
-                // IMPORTANT: Use the session message
+                // PASSING THE STABLE MESSAGE
                 const s = await e.request({{method:'personal_sign', params:['{st.session_state.message}', a]}}); 
                 let box = document.getElementById('sigBox');
                 if (!box) {{
@@ -116,34 +125,31 @@ with tab1:
         if st.button("VERIFY SIGNATURE", type="primary"):
             if not sig:
                 st.error("Please paste the signature first.")
+            elif st.session_state.message is None:
+                st.error("Message has not been generated. Please check wallet inputs.")
             else:
                 try:
-                    # Recover the signing address from the message and signature
+                    # Recovery uses the message from session state
                     recovered_address = Account.recover_message(
                         encode_defunct(text=st.session_state.message), 
                         signature=sig
                     )
                     
-                    # Check if the recovered address matches the compromised wallet
+                    # Comparison uses the current input values
                     if recovered_address.lower() == compromised_input.lower():
                         st.success("🎉 VERIFIED! You now control the Claim tab.")
                         
-                        # PERSIST critical data to session state
+                        # PERSIST the successful addresses and signature
                         st.session_state.verified = True
                         st.session_state.compromised_wallet = compromised_input
                         st.session_state.safe_wallet = safe_input
-                        
                         st.balloons()
                     else:
-                        st.error("Signature does not match the Compromised Wallet address.")
+                        st.error("Signature does not match the Compromised Wallet address. Did you sign with the correct wallet?")
                         st.session_state.verified = False
-                        st.session_state.compromised_wallet = None
-                        st.session_state.safe_wallet = None
                 except Exception as e:
                     st.error(f"Verification failed. Check the signature is complete. Error: {e}")
                     st.session_state.verified = False
-                    st.session_state.compromised_wallet = None
-                    st.session_state.safe_wallet = None
     else:
         st.warning("Enter valid Compromised and Safe wallet addresses (0x...) to start.")
 
@@ -154,17 +160,16 @@ with tab2:
     if st.session_state.verified:
         st.success(f"✅ Verified! Funds will be claimed from **{st.session_state.compromised_wallet}** and sent to **{st.session_state.safe_wallet}**.")
         
-        # Display the signature for use in the smart contract (off-chain execution)
-        st.info("Your signed message (proof of control) for the smart contract:")
-        st.code(st.session_state.message)
-        st.code(st.session_state.sig) # sig is the key used for the signature input
+        # Retrieve the message and signature from session state for display
+        message_to_send = st.session_state.message
+        signature_to_send = st.session_state.sig
+        
+        st.info("Your signed message (proof of control) and signature for the smart contract:")
+        st.code(f"MESSAGE:\n{message_to_send}")
+        st.code(f"SIGNATURE:\n{signature_to_send}")
 
-        # This button will trigger the actual smart contract call (e.g., via web3.py)
         if st.button("CLAIM ALL AIRDROPS (0 Gas Meta-Transaction)", type="primary"):
-            # In a real app, this is where you'd call your smart contract
-            # passing: compromised_wallet, safe_wallet, message, and signature
-            
-            # Placeholder for smart contract interaction
+            # This is where you would call your smart contract
             tx_hash = "0x" + secrets.token_hex(32) # Mock transaction hash
             st.success(f"CLAIM INITIATED! Transaction is pending on the atomic claim contract.")
             st.code(f"TX Hash: {tx_hash}")
