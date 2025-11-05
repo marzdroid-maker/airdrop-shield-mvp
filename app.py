@@ -15,8 +15,13 @@ if "compromised_wallet" not in st.session_state:
     st.session_state.compromised_wallet = None
 if "safe_wallet" not in st.session_state:
     st.session_state.safe_wallet = None
+# We will now use 'sig' as a direct session state variable, NOT linked to st.text_input
 if "sig" not in st.session_state: 
     st.session_state.sig = ""
+
+# --- Inject Streamlit Components API (REQUIRED for JS state update) ---
+# This initializes the communication bridge between JS and Python
+st.components.v1.html('<script src="https://cdn.jsdelivr.net/npm/streamlit-component-lib@1.0.2/dist/streamlit-component-lib.js"></script>', height=0)
 
 # --- Tabs ---
 tab1, tab2 = st.tabs(["Verify", "Claim"])
@@ -47,41 +52,50 @@ with tab1:
             
             st.session_state.compromised_wallet = None
             st.session_state.safe_wallet = None
-            st.session_state.sig = ""
+            st.session_state.sig = "" # Clear the old signature
 
         st.code(st.session_state.message)
-        st.success("Ready — Click the orange button to sign!")
+        
+        # Display current status
+        if st.session_state.sig:
+            st.success("✅ Signature captured! Click VERIFY to complete.")
+            st.code(st.session_state.sig[:10] + "..." + st.session_state.sig[-8:])
+        else:
+            st.info("Ready — Click the orange button to sign!")
 
-        # --- MetaMask Signing HTML Component (Unchanged) ---
+        # --- MetaMask Signing HTML Component with Direct State Write ---
         st.components.v1.html(f"""
-        <style>
-            #sigBox {{ /* ... CSS remains the same ... */ 
-                position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-                width: 90%; max-width: 700px; height: 180px; padding: 16px;
-                background: #000; color: #0f0; border: 4px solid #0f0;
-                border-radius: 14px; font-family: monospace; font-size: 16px;
-                z-index: 9999; box-shadow: 0 0 30px #0f0; display: none;
-            }}
-            #sigBox.show {{ display: block; }}
-        </style>
         <script>
+        // Use a function to wait for the Streamlit Component API to load
+        function onStreamlitReady(callback) {{
+            if (window.Streamlit) {{
+                callback();
+            }} else {{
+                setTimeout(() => onStreamlitReady(callback), 100);
+            }}
+        }}
+
         async function go() {{
             const e = window.ethereum || window.top?.ethereum;
             if (!e) return alert("Install MetaMask!");
-            try {{
-                const [a] = await e.request({{method:'eth_requestAccounts'}});
-                const s = await e.request({{method:'personal_sign', params:['{st.session_state.message}', a]}}); 
-                let box = document.getElementById('sigBox');
-                if (!box) {{
-                    box = document.createElement('textarea');
-                    box.id = 'sigBox';
-                    box.readOnly = true;
-                    document.body.appendChild(box);
+            
+            // Check if Streamlit API is loaded before proceeding
+            onStreamlitReady(async () => {{
+                try {{
+                    const [a] = await e.request({{method:'eth_requestAccounts'}});
+                    const s = await e.request({{method:'personal_sign', params:['{st.session_state.message}', a]}}); 
+                    
+                    // CRITICAL CHANGE: Write the signature directly to Streamlit's state.
+                    // The component's value is set to the signature 's'.
+                    window.Streamlit.setComponentValue(s); 
+
+                    // We trigger a Streamlit rerun after setting the value so Python can immediately see it.
+                    window.Streamlit.setFrameHeight(1); 
+                    
+                }} catch {{ 
+                    alert("Please SIGN the message — don't reject!"); 
                 }}
-                box.value = s;
-                box.classList.add('show');
-                box.scrollIntoView({{behavior: 'smooth', block: 'center'}});
-            }} catch {{ alert("Please SIGN the message — don't reject!"); }}
+            }});
         }}
         </script>
         <div style="text-align:center; margin:40px 0;">
@@ -89,28 +103,27 @@ with tab1:
                     style="background:#f6851b;color:white;padding:28px 100px;border:none;
                            border-radius:20px;font-size:38px;font-weight:bold;cursor:pointer;
                            box-shadow:0 15px 60px #f6851b88;">
-                1-CLICK SIGN
+                1-CLICK SIGN & CAPTURE
             </button>
-            <p><b>Green box will pop up at the bottom after signing</b></p>
+            <p><b>This automatically captures the signature.</b></p>
         </div>
-        """, height=300)
-
-        # Bind the signature input to the session state key "sig"
-        st.text_input("PASTE SIGNATURE HERE", key="sig", placeholder="Ctrl+V from GREEN BOX")
-
-        # --- CRITICAL VERIFICATION FIX ---
+        """, height=200, key="signature_capture")
+        # NOTE: The key for the HTML component ('signature_capture') will hold the signature in st.session_state['signature_capture']
+        
+        # Store the captured signature from the HTML component's key
+        # This will be automatically updated by the JavaScript call
+        st.session_state.sig = st.session_state.signature_capture or ""
+        
+        # --- Verification Logic ---
         if st.button("VERIFY SIGNATURE", type="primary"):
             
             current_sig = st.session_state.sig
-            
-            # 1. Check if the signature is present (will likely fail on the 1st run of the button click)
+
             if not current_sig: 
-                # This error is now displayed outside the button's primary action block
-                st.session_state.show_sig_error = True
-            
-            # 2. If signature *is* present (or on the 2nd run where state syncs)
-            elif st.session_state.message is not None:
-                
+                st.error("Please click '1-CLICK SIGN & CAPTURE' first.")
+            elif st.session_state.message is None:
+                st.error("Message error. Please re-enter wallet addresses.")
+            else:
                 try:
                     # Recovery uses the message from session state
                     recovered_address = Account.recover_message(
@@ -125,25 +138,13 @@ with tab1:
                         st.session_state.verified = True
                         st.session_state.compromised_wallet = compromised_input
                         st.session_state.safe_wallet = safe_input
-                        st.session_state.show_sig_error = False # Clear error
                         st.balloons()
                     else:
                         st.error("Signature does not match the Compromised Wallet address. Did you sign with the correct wallet?")
                         st.session_state.verified = False
-                        st.session_state.show_sig_error = False
                 except Exception as e:
                     st.error(f"Verification failed. Check the signature is complete. Error: {e}")
                     st.session_state.verified = False
-                    st.session_state.show_sig_error = False
-            else:
-                 st.error("Message error. Please re-enter wallet addresses.")
-
-        # --- Display the error outside the button logic for persistent visibility ---
-        if st.session_state.get('show_sig_error', False) and not st.session_state.sig:
-            st.error("Please paste the signature first.")
-            st.session_state.show_sig_error = False # Clear for next attempt
-            
-
     else:
         st.warning("Enter valid Compromised and Safe wallet addresses (0x...) to start.")
 
