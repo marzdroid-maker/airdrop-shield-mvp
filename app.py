@@ -18,8 +18,7 @@ if "safe_wallet" not in st.session_state:
 if "sig" not in st.session_state: 
     st.session_state.sig = ""
 if "verify_clicked" not in st.session_state:
-    st.session_state.verify_clicked = False
-
+    st.session_state.verify_clicked = False # Flag for the two-step click logic
 
 # --- Tabs ---
 tab1, tab2 = st.tabs(["Verify", "Claim"])
@@ -50,7 +49,7 @@ with tab1:
             st.session_state.compromised_wallet = None
             st.session_state.safe_wallet = None
             st.session_state.sig = ""
-            st.session_state.verify_clicked = False # Reset click flag
+            st.session_state.verify_clicked = False
 
         st.code(st.session_state.message)
         st.success("Ready — Click the orange button to sign!")
@@ -95,15 +94,22 @@ with tab1:
                 1-CLICK SIGN
             </button>
             <p><b>Green box will pop up at the bottom after signing</b></p>
+            <p>**NOTE: You may need to click the '1-CLICK SIGN' button twice.**</p>
         </div>
-        """, height=300)
+        """, height=350)
 
         # Re-introduce the original text input
         st.text_input("PASTE SIGNATURE HERE", key="sig", placeholder="Ctrl+V from GREEN BOX")
 
-        # --- CRITICAL FIX: Two-Button Sync ---
-        # 1. Verification logic is encapsulated in a function
+        # --- Verification Function ---
         def verify_signature(sig_to_verify, msg_to_recover, comp_wallet, safe_wallet):
+            st.session_state.verified = False # Assume failure until proven otherwise
+            
+            # Guardrail check on signature length (must be 132 chars: 0x + 65 bytes * 2 hex)
+            if len(sig_to_verify) != 132 or not sig_to_verify.startswith("0x"):
+                st.error("Invalid signature format. Did you copy the FULL 0x... text?")
+                return
+
             try:
                 # Use the stable message and the input signature
                 recovered_address = Account.recover_message(
@@ -119,15 +125,10 @@ with tab1:
                     st.session_state.compromised_wallet = comp_wallet
                     st.session_state.safe_wallet = safe_wallet
                     st.balloons()
-                    return True
                 else:
                     st.error("Signature does not match the Compromised Wallet address. Did you sign with the correct wallet?")
-                    st.session_state.verified = False
-                    return False
             except Exception as e:
                 st.error(f"Verification failed. Check the signature is complete. Error: {e}")
-                st.session_state.verified = False
-                return False
 
         # 2. Main verification button triggers a flag
         if st.button("VERIFY SIGNATURE", type="primary"):
@@ -144,7 +145,7 @@ with tab1:
                     safe_input
                 )
             else:
-                # This error is now displayed persistently until the signature is pasted
+                # Display the error persistently until the signature is pasted
                 st.error("Please paste the signature first.")
             
             # Reset the flag so the button only triggers once per click
