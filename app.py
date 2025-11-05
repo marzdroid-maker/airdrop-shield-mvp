@@ -1,4 +1,4 @@
-# app.py — YOUR BASELINE + 100% WORKING GREEN BOX
+# app.py — FINAL — 1-CLICK SIGN, GREEN BOX, NO DOUBLE POPUP
 import secrets
 import streamlit as st
 from eth_account import Account
@@ -65,7 +65,6 @@ with tab1:
                 box.value = s;
                 box.classList.add('show');
                 box.scrollIntoView({{behavior: 'smooth', block: 'center'}});
-                alert("SIGNED! GREEN BOX AT BOTTOM");
             }} catch {{ alert("SIGN — don't reject!"); }}
         }}
         </script>
@@ -76,7 +75,7 @@ with tab1:
                            box-shadow:0 15px 60px #f6851b88;">
                 1-CLICK SIGN
             </button>
-            <p><b>Green box will pop up at the bottom after signing</b></p>
+            <p><b>One click → MetaMask → SIGN → GREEN BOX</b></p>
         </div>
         """, height=300)
 
