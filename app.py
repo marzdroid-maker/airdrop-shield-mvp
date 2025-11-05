@@ -15,13 +15,10 @@ if "compromised_wallet" not in st.session_state:
     st.session_state.compromised_wallet = None
 if "safe_wallet" not in st.session_state:
     st.session_state.safe_wallet = None
-# We will now use 'sig' as a direct session state variable, NOT linked to st.text_input
 if "sig" not in st.session_state: 
     st.session_state.sig = ""
-
-# --- Inject Streamlit Components API (REQUIRED for JS state update) ---
-# This initializes the communication bridge between JS and Python
-st.components.v1.html('<script src="https://cdn.jsdelivr.net/npm/streamlit-component-lib@1.0.2/dist/streamlit-component-lib.js"></script>', height=0)
+    
+# IMPORTANT: Remove the standalone st.components.v1.html for loading the component library
 
 # --- Tabs ---
 tab1, tab2 = st.tabs(["Verify", "Claim"])
@@ -52,9 +49,13 @@ with tab1:
             
             st.session_state.compromised_wallet = None
             st.session_state.safe_wallet = None
-            st.session_state.sig = "" # Clear the old signature
+            st.session_state.sig = "" 
 
         st.code(st.session_state.message)
+        
+        # Initialize component key *only* if we have valid inputs
+        if 'signature_capture' not in st.session_state:
+             st.session_state.signature_capture = ""
         
         # Display current status
         if st.session_state.sig:
@@ -63,10 +64,11 @@ with tab1:
         else:
             st.info("Ready — Click the orange button to sign!")
 
-        # --- MetaMask Signing HTML Component with Direct State Write ---
+        # --- MetaMask Signing HTML Component with Embedded Library and Direct State Write ---
+        # The external component library script is now inside the component itself.
         st.components.v1.html(f"""
+        <script src="https://cdn.jsdelivr.net/npm/streamlit-component-lib@1.0.2/dist/streamlit-component-lib.js"></script>
         <script>
-        // Use a function to wait for the Streamlit Component API to load
         function onStreamlitReady(callback) {{
             if (window.Streamlit) {{
                 callback();
@@ -79,17 +81,12 @@ with tab1:
             const e = window.ethereum || window.top?.ethereum;
             if (!e) return alert("Install MetaMask!");
             
-            // Check if Streamlit API is loaded before proceeding
             onStreamlitReady(async () => {{
                 try {{
                     const [a] = await e.request({{method:'eth_requestAccounts'}});
                     const s = await e.request({{method:'personal_sign', params:['{st.session_state.message}', a]}}); 
                     
-                    // CRITICAL CHANGE: Write the signature directly to Streamlit's state.
-                    // The component's value is set to the signature 's'.
                     window.Streamlit.setComponentValue(s); 
-
-                    // We trigger a Streamlit rerun after setting the value so Python can immediately see it.
                     window.Streamlit.setFrameHeight(1); 
                     
                 }} catch {{ 
@@ -108,10 +105,8 @@ with tab1:
             <p><b>This automatically captures the signature.</b></p>
         </div>
         """, height=200, key="signature_capture")
-        # NOTE: The key for the HTML component ('signature_capture') will hold the signature in st.session_state['signature_capture']
         
-        # Store the captured signature from the HTML component's key
-        # This will be automatically updated by the JavaScript call
+        # Pull the captured signature from the component's key
         st.session_state.sig = st.session_state.signature_capture or ""
         
         # --- Verification Logic ---
@@ -125,7 +120,6 @@ with tab1:
                 st.error("Message error. Please re-enter wallet addresses.")
             else:
                 try:
-                    # Recovery uses the message from session state
                     recovered_address = Account.recover_message(
                         encode_defunct(text=st.session_state.message), 
                         signature=current_sig
@@ -133,8 +127,6 @@ with tab1:
                     
                     if recovered_address.lower() == compromised_input.lower():
                         st.success("🎉 VERIFIED! You now control the Claim tab.")
-                        
-                        # PERSIST the successful addresses
                         st.session_state.verified = True
                         st.session_state.compromised_wallet = compromised_input
                         st.session_state.safe_wallet = safe_input
