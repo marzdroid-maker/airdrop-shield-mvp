@@ -15,7 +15,7 @@ if "compromised_wallet" not in st.session_state:
     st.session_state.compromised_wallet = None
 if "safe_wallet" not in st.session_state:
     st.session_state.safe_wallet = None
-if "sig" not in st.session_state: # Ensure 'sig' key exists for reliable access
+if "sig" not in st.session_state: 
     st.session_state.sig = ""
 
 # --- Tabs ---
@@ -45,14 +45,14 @@ with tab1:
             st.session_state.verified = False
             st.session_state.message = f"I control {compromised_input} and authorize recovery to {safe_input} — {secrets.token_hex(8)}"
             
-            st.session_state.compromised_wallet = None # Clear persisted data
+            st.session_state.compromised_wallet = None
             st.session_state.safe_wallet = None
-            st.session_state.sig = "" # Clear signature
+            st.session_state.sig = ""
 
         st.code(st.session_state.message)
         st.success("Ready — Click the orange button to sign!")
 
-        # --- MetaMask Signing HTML Component ---
+        # --- MetaMask Signing HTML Component (Unchanged) ---
         st.components.v1.html(f"""
         <style>
             #sigBox {{ /* ... CSS remains the same ... */ 
@@ -98,15 +98,19 @@ with tab1:
         # Bind the signature input to the session state key "sig"
         st.text_input("PASTE SIGNATURE HERE", key="sig", placeholder="Ctrl+V from GREEN BOX")
 
+        # --- CRITICAL VERIFICATION FIX ---
         if st.button("VERIFY SIGNATURE", type="primary"):
-            # Use the value guaranteed to be in the session state
+            
             current_sig = st.session_state.sig
             
+            # 1. Check if the signature is present (will likely fail on the 1st run of the button click)
             if not current_sig: 
-                st.error("Please paste the signature first.")
-            elif st.session_state.message is None:
-                st.error("Message has not been generated. Please check wallet inputs.")
-            else:
+                # This error is now displayed outside the button's primary action block
+                st.session_state.show_sig_error = True
+            
+            # 2. If signature *is* present (or on the 2nd run where state syncs)
+            elif st.session_state.message is not None:
+                
                 try:
                     # Recovery uses the message from session state
                     recovered_address = Account.recover_message(
@@ -114,7 +118,6 @@ with tab1:
                         signature=current_sig
                     )
                     
-                    # Comparison uses the current input values
                     if recovered_address.lower() == compromised_input.lower():
                         st.success("🎉 VERIFIED! You now control the Claim tab.")
                         
@@ -122,13 +125,25 @@ with tab1:
                         st.session_state.verified = True
                         st.session_state.compromised_wallet = compromised_input
                         st.session_state.safe_wallet = safe_input
+                        st.session_state.show_sig_error = False # Clear error
                         st.balloons()
                     else:
                         st.error("Signature does not match the Compromised Wallet address. Did you sign with the correct wallet?")
                         st.session_state.verified = False
+                        st.session_state.show_sig_error = False
                 except Exception as e:
                     st.error(f"Verification failed. Check the signature is complete. Error: {e}")
                     st.session_state.verified = False
+                    st.session_state.show_sig_error = False
+            else:
+                 st.error("Message error. Please re-enter wallet addresses.")
+
+        # --- Display the error outside the button logic for persistent visibility ---
+        if st.session_state.get('show_sig_error', False) and not st.session_state.sig:
+            st.error("Please paste the signature first.")
+            st.session_state.show_sig_error = False # Clear for next attempt
+            
+
     else:
         st.warning("Enter valid Compromised and Safe wallet addresses (0x...) to start.")
 
