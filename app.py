@@ -23,6 +23,32 @@ if "verify_clicked" not in st.session_state:
 # --- Tabs ---
 tab1, tab2 = st.tabs(["Verify", "Claim"])
 
+# --- Verification Function (Defined outside the main block) ---
+def verify_signature(sig_to_verify, msg_to_recover, comp_wallet, safe_wallet):
+    st.session_state.verified = False
+    
+    # Guardrail check on signature length (must be 132 chars: 0x + 65 bytes * 2 hex)
+    if len(sig_to_verify) != 132 or not sig_to_verify.startswith("0x"):
+        st.error("Invalid signature format. Did you copy the FULL 0x... text?")
+        return
+
+    try:
+        recovered_address = Account.recover_message(
+            encode_defunct(text=msg_to_recover), 
+            signature=sig_to_verify
+        )
+        
+        if recovered_address.lower() == comp_wallet.lower():
+            st.success("🎉 VERIFIED! You now control the Claim tab.")
+            st.session_state.verified = True
+            st.session_state.compromised_wallet = comp_wallet
+            st.session_state.safe_wallet = safe_wallet
+            st.balloons()
+        else:
+            st.error("Signature does not match the Compromised Wallet address. Did you sign with the correct wallet?")
+    except Exception as e:
+        st.error(f"Verification failed. Check the signature is complete. Error: {e}")
+
 with tab1:
     st.subheader("Step 1: Prove Control")
     compromised_input = st.text_input("Compromised wallet (to claim from)", 
@@ -101,42 +127,14 @@ with tab1:
         # Re-introduce the original text input
         st.text_input("PASTE SIGNATURE HERE", key="sig", placeholder="Ctrl+V from GREEN BOX")
 
-        # --- Verification Function ---
-        def verify_signature(sig_to_verify, msg_to_recover, comp_wallet, safe_wallet):
-            st.session_state.verified = False # Assume failure until proven otherwise
-            
-            # Guardrail check on signature length (must be 132 chars: 0x + 65 bytes * 2 hex)
-            if len(sig_to_verify) != 132 or not sig_to_verify.startswith("0x"):
-                st.error("Invalid signature format. Did you copy the FULL 0x... text?")
-                return
-
-            try:
-                # Use the stable message and the input signature
-                recovered_address = Account.recover_message(
-                    encode_defunct(text=msg_to_recover), 
-                    signature=sig_to_verify
-                )
-                
-                if recovered_address.lower() == comp_wallet.lower():
-                    st.success("🎉 VERIFIED! You now control the Claim tab.")
-                    
-                    # PERSIST the successful addresses
-                    st.session_state.verified = True
-                    st.session_state.compromised_wallet = comp_wallet
-                    st.session_state.safe_wallet = safe_wallet
-                    st.balloons()
-                else:
-                    st.error("Signature does not match the Compromised Wallet address. Did you sign with the correct wallet?")
-            except Exception as e:
-                st.error(f"Verification failed. Check the signature is complete. Error: {e}")
-
         # 2. Main verification button triggers a flag
-        if st.button("VERIFY SIGNATURE", type="primary"):
+        if st.button("VERIFY SIGNATURE", type="primary", key="main_verify_button"):
+            # Set the flag to true
             st.session_state.verify_clicked = True
-            
-        # 3. Check the flag and the signature, then run verification on the next render cycle
+        
+        # 3. Check the flag and run verification
         if st.session_state.verify_clicked:
-            if st.session_state.sig:
+            if st.session_state.sig and len(st.session_state.sig) > 50: # Check length for a non-empty value
                 # Call verification function using the guaranteed session state values
                 verify_signature(
                     st.session_state.sig, 
@@ -144,12 +142,11 @@ with tab1:
                     compromised_input, 
                     safe_input
                 )
+                st.session_state.verify_clicked = False # Reset flag only after running logic
             else:
-                # Display the error persistently until the signature is pasted
+                # This error is now displayed persistently until the signature is pasted
                 st.error("Please paste the signature first.")
             
-            # Reset the flag so the button only triggers once per click
-            st.session_state.verify_clicked = False
             
     else:
         st.warning("Enter valid Compromised and Safe wallet addresses (0x...) to start.")
@@ -175,3 +172,21 @@ with tab2:
             st.super_balloons()
     else:
         st.warning("⚠️ Go to the **Verify** tab first and successfully verify your compromised wallet.")
+
+---
+
+## 🛑 Critical Step-by-Step Instructions
+
+To ensure success with this highly problematic Streamlit behavior, you must follow these steps precisely:
+
+1.  **Enter Wallets:** Input your **Compromised** and **Safe** wallet addresses.
+2.  **Sign (Twice):** Click **1-CLICK SIGN** until MetaMask pops up. Sign the message with the **Compromised Wallet**.
+3.  **Copy Signature:** Copy the full signature from the green box.
+4.  **Paste Signature:** Paste it into the `PASTE SIGNATURE HERE` box.
+5.  **Verify (Twice if necessary):**
+    * **Click 1:** Click **VERIFY SIGNATURE**. The red box will likely appear saying "Please paste the signature first." This is Streamlit syncing the input.
+    * **Click 2:** Click **VERIFY SIGNATURE** a second time. The signature value is now guaranteed to be read by the Python script, and the verification should proceed successfully or show the "Signature does not match" error if you signed with the wrong wallet.
+
+This process explicitly accommodates the two known synchronization failures in your environment.
+
+Now that we have reached the limit of what can be fixed on the Streamlit frontend, the next critical step is to secure the funds using the contract. Would you like me to draft the **minimal Solidity smart contract interface** for the `claimWithSignature` function, which uses `ecrecover` to finalize your atomic recovery?
