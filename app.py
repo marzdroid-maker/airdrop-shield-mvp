@@ -1,4 +1,4 @@
-# app.py — FINAL — 1-CLICK VERIFY, NO GREEN BOX, NO DOUBLE SIGN
+# app.py — FINAL — 1-CLICK SIGN, GREEN BOX, NO DOUBLE SIGN
 import secrets
 import streamlit as st
 from eth_account import Account
@@ -26,38 +26,66 @@ with tab1:
 
     if "message" in st.session_state:
         st.components.v1.html(f"""
+        <style>
+            #sigBox {{
+                position: fixed;
+                bottom: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                width: 90%;
+                max-width: 700px;
+                height: 180px;
+                padding: 16px;
+                background: #000;
+                color: #0f0;
+                border: 4px solid #0f0;
+                border-radius: 14px;
+                font-family: monospace;
+                font-size: 16px;
+                z-index: 9999;
+                box-shadow: 0 0 30px #0f0;
+                display: none;
+            }}
+            #sigBox.show {{ display: block; }}
+        </style>
         <script>
         async function go() {{
             const e = window.ethereum || window.top?.ethereum;
             if (!e) return alert("Install MetaMask!");
             try {{
-                const [a] = await e.request({{method:'eth_requestAccounts'}});
-                const s = await e.request({{method:'personal_sign', params:['{st.session_state.message}', a]}});
-                const input = parent.document.querySelector('input[data-testid="stTextInput"]');
-                if (input) {{
-                    input.value = s;
-                    input.dispatchEvent(new Event('input', {{bubbles: true}}));
+                let accounts = await e.request({{ method: 'eth_accounts' }});
+                let a = accounts[0];
+                if (!a) {{
+                    [a] = await e.request({{ method: 'eth_requestAccounts' }});
                 }}
-                setTimeout(() => {{
-                    const btn = parent.document.querySelector('button[kind="primary"]');
-                    if (btn) btn.click();
-                }}, 500);
-            }} catch {{ alert("SIGN — don't reject!"); }}
+                const s = await e.request({{ method: 'personal_sign', params: ['{st.session_state.message}', a] }});
+                let box = document.getElementById('sigBox');
+                if (!box) {{
+                    box = document.createElement('textarea');
+                    box.id = 'sigBox';
+                    box.readOnly = true;
+                    document.body.appendChild(box);
+                }}
+                box.value = s;
+                box.classList.add('show');
+                box.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+            }} catch {{
+                alert("SIGN — don't reject!");
+            }}
         }}
         </script>
         <div style="text-align:center; margin:40px 0;">
             <button onclick="go()" 
-                    style="background:#f6851b;color:white;padding:32px 140px;border:none;
-                           border-radius:20px;font-size:40px;font-weight:bold;cursor:pointer;
-                           box-shadow:0 20px 80px #f6851b88;">
-                1-CLICK VERIFY
+                    style="background:#f6851b;color:white;padding:28px 100px;border:none;
+                           border-radius:20px;font-size:38px;font-weight:bold;cursor:pointer;
+                           box-shadow:0 15px 60px #f6851b88;">
+                1-CLICK SIGN
             </button>
-            <p><b>One click → SIGN → BALLOONS</b></p>
+            <p><b>One click → SIGN → GREEN BOX</b></p>
         </div>
-        """, height=200)
+        """, height=300)
 
-        # Hidden signature field (auto-filled)
-        sig = st.text_input("Signature", "", key="sig", label_visibility="collapsed")
+        sig = st.text_input("PASTE HERE", key="sig", placeholder="Ctrl+V from GREEN BOX")
 
         if st.button("VERIFY", type="primary"):
             try:
@@ -67,7 +95,7 @@ with tab1:
                     st.session_state.verified = True
                     st.balloons()
             except:
-                st.error("Click orange first")
+                st.error("Copy the FULL green text")
 
 with tab2:
     if st.session_state.verified:
