@@ -1,4 +1,4 @@
-# app.py — FINAL — 1-CLICK SIGN, GREEN BOX, NO DOUBLE POPUP
+# app.py — FINAL — 1-CLICK SIGN, NO DOUBLE POPUP
 import secrets
 import streamlit as st
 from eth_account import Account
@@ -49,6 +49,14 @@ with tab1:
             #sigBox.show {{ display: block; }}
         </style>
         <script>
+        // PRE-CONNECT ON PAGE LOAD
+        window.addEventListener('load', () => {{
+            const e = window.ethereum || window.top?.ethereum;
+            if (e) {{
+                e.request({{method: 'eth_requestAccounts'}}).catch(() => {{}});
+            }}
+        }});
+
         async function go() {{
             const e = window.ethereum || window.top?.ethereum;
             if (!e) return alert("Install MetaMask!");
@@ -75,7 +83,7 @@ with tab1:
                            box-shadow:0 15px 60px #f6851b88;">
                 1-CLICK SIGN
             </button>
-            <p><b>One click → MetaMask → SIGN → GREEN BOX</b></p>
+            <p><b>One click → SIGN → GREEN BOX</b></p>
         </div>
         """, height=300)
 
