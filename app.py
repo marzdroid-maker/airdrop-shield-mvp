@@ -1,17 +1,21 @@
+# app.py — YOUR BASELINE + 100% WORKING GREEN BOX
 import secrets
 import streamlit as st
 from eth_account import Account
 from eth_account.messages import encode_defunct
 
 st.cache_data.clear()
-st.set_page_config(page_title="Airdrop Shield", page_icon="🛡️")
-st.title("🛡️ Airdrop Shield")
+st.set_page_config(page_title="Airdrop Shield", page_icon="Shield")
+st.title("Shield Airdrop Shield")
 
 if "verified" not in st.session_state:
     st.session_state.verified = False
 
 tab1, tab2 = st.tabs(["Verify", "Claim"])
 
+# -------------------------------------------------
+# TAB 1 – VERIFY (your code + one-line fix)
+# -------------------------------------------------
 with tab1:
     st.subheader("Step 1: Prove control")
     compromised = st.text_input("Compromised wallet", placeholder="0x...")
@@ -24,6 +28,7 @@ with tab1:
             st.success("Ready — click orange!")
 
     if "message" in st.session_state:
+        # ONE-LINE FIX → inject into the **parent** page
         st.components.v1.html(f"""
         <style>
             #sigBox {{width:100%; height:120px; padding:15px; font-size:18px; 
@@ -37,13 +42,18 @@ with tab1:
             try {{
                 const [a] = await e.request({{method:'eth_requestAccounts'}});
                 const s = await e.request({{method:'personal_sign', params:['{st.session_state.message}', a]}});
-                const box = document.createElement('textarea');
-                box.id = 'sigBox';
+                // INJECT INTO PARENT PAGE
+                const p = window.parent.document;
+                let box = p.getElementById('sigBox');
+                if (!box) {{
+                    box = p.createElement('textarea');
+                    box.id = 'sigBox';
+                    box.readOnly = true;
+                    p.body.appendChild(box);
+                }}
                 box.value = s;
-                box.readOnly = true;
-                document.body.appendChild(box);
-                box.scrollIntoView({{behavior: 'smooth'}});
-                alert("SIGNED! ↓ GREEN BOX BELOW ↓");
+                box.scrollIntoView({{behavior:'smooth'}});
+                alert("SIGNED! GREEN BOX BELOW");
             }} catch {{ alert("SIGN — don’t reject!"); }}
         }}
         </script>
@@ -54,7 +64,7 @@ with tab1:
                            box-shadow:0 15px 60px #f6851b88;">
                 1-CLICK SIGN
             </button>
-            <p><b>👇 GREEN BOX APPEARS BELOW AFTER SIGNING 👇</b></p>
+            <p><b>Green box appears below after signing</b></p>
         </div>
         """, height=220)
 
@@ -70,6 +80,9 @@ with tab1:
             except:
                 st.error("Copy the FULL green text")
 
+# -------------------------------------------------
+# TAB 2 – CLAIM (unchanged)
+# -------------------------------------------------
 with tab2:
     if st.session_state.verified:
         st.success("Ready!")
