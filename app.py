@@ -1,4 +1,4 @@
-# app.py — Airdrop Shield (Fully Working personal_sign + Clear Instructions)
+# app.py — Airdrop Shield (Stable personal_sign version with refined user instructions)
 import secrets
 import streamlit as st
 from eth_account import Account
@@ -19,12 +19,13 @@ with tab1:
     st.markdown("""
     ### 🧭 Instructions
     1. **Enter your compromised wallet** (the one that lost access)  
-    2. **Enter your safe wallet** (where funds will be sent)  
+    2. **Enter your safe wallet** (where funds will be sent) then **hit Enter to apply**  
     3. Click **🟧 1-CLICK SIGN** — MetaMask will pop up and ask you to sign a message  
     4. After signing, a **green box** appears at the bottom containing your signature  
     5. **Copy** the entire green text (Ctrl + C or ⌘ + C)  
-    6. **Paste** it into the “Paste signature here” box  
-    7. Click **VERIFY** to confirm wallet ownership
+    6. **Paste** it into the “Paste signature here” field  
+    7. Click **VERIFY** to confirm wallet ownership  
+    8. Once verified, go to the **Claim** tab to simulate recovery
     """)
 
     compromised = st.text_input("Compromised wallet", placeholder="0x...")
@@ -39,7 +40,7 @@ with tab1:
             st.success("✅ Ready — click the orange button below to sign in MetaMask")
 
     if "message" in st.session_state:
-        # HTML signing widget (unchanged logic)
+        # HTML signing widget (unchanged)
         st.components.v1.html(f"""
         <style>
             #sigBox {{
@@ -111,7 +112,8 @@ with tab1:
         </div>
         """, height=330)
 
-        sig = st.text_input("Paste signature here", key="sig", placeholder="Ctrl + V from green box")
+        sig = st.text_input("Paste signature here", key="sig",
+                            placeholder="Ctrl + V from green box")
 
         if st.button("VERIFY", type="primary"):
             try:
@@ -129,10 +131,11 @@ with tab1:
                 st.error(f"Verification failed — please ensure full signature is pasted.\n\n{e}")
 
 with tab2:
+    st.subheader("Step 2 — Claim (Simulated)")
     if st.session_state.verified:
         st.success("Wallet verified — ready to claim.")
         if st.button("CLAIM ALL (0 gas)", type="primary"):
-            st.success(f"✅ Claimed! TX: 0xBiconomy{secrets.token_hex(8)}")
+            st.success(f"✅ Claim simulated — TX: 0xBiconomy{secrets.token_hex(8)}")
             st.balloons()
     else:
         st.warning("Please verify your wallet first.")
