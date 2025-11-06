@@ -1,10 +1,38 @@
-# app.py — Airdrop Shield (Stable personal_sign version with refined user instructions)
+# app.py — Airdrop Shield (Compact header + prominent tabs)
 import secrets
 import streamlit as st
 from eth_account import Account
 from eth_account.messages import encode_defunct
 
+# --- Page setup
 st.set_page_config(page_title="Airdrop Shield", page_icon="🛡️")
+
+# --- Custom CSS styling
+st.markdown("""
+<style>
+/* Make title fit on one line */
+h1 {
+    white-space: nowrap;
+    font-size: 2.2rem !important;
+    font-weight: 700 !important;
+    margin-bottom: 0.3rem !important;
+}
+
+/* Style the tabs to stand out */
+div[data-baseweb="tab"] > button {
+    font-size: 1.1rem !important;
+    font-weight: 600 !important;
+    padding: 0.4rem 1.4rem !important;
+}
+
+div[data-baseweb="tab-list"] {
+    justify-content: center !important;
+    border-bottom: 2px solid #e3e3e3 !important;
+    margin-bottom: 0.5rem !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 st.title("🛡️ Airdrop Shield — Secure Recovery Tool")
 
 # --- Initialize session state
@@ -40,7 +68,7 @@ with tab1:
             st.success("✅ Ready — click the orange button below to sign in MetaMask")
 
     if "message" in st.session_state:
-        # HTML signing widget (unchanged)
+        # HTML signing widget
         st.components.v1.html(f"""
         <style>
             #sigBox {{
@@ -112,8 +140,7 @@ with tab1:
         </div>
         """, height=330)
 
-        sig = st.text_input("Paste signature here", key="sig",
-                            placeholder="Ctrl + V from green box")
+        sig = st.text_input("Paste signature here", key="sig", placeholder="Ctrl + V from green box")
 
         if st.button("VERIFY", type="primary"):
             try:
