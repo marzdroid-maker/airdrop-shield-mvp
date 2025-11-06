@@ -1,30 +1,25 @@
-# app.py — Airdrop Shield (Compact header + prominent tabs)
+# app.py — Airdrop Shield (with Safe Wallet Re-Verification on Claim)
 import secrets
 import streamlit as st
 from eth_account import Account
 from eth_account.messages import encode_defunct
 
-# --- Page setup
 st.set_page_config(page_title="Airdrop Shield", page_icon="🛡️")
 
-# --- Custom CSS styling
+# --- Custom styling
 st.markdown("""
 <style>
-/* Make title fit on one line */
 h1 {
     white-space: nowrap;
     font-size: 2.2rem !important;
     font-weight: 700 !important;
     margin-bottom: 0.3rem !important;
 }
-
-/* Style the tabs to stand out */
 div[data-baseweb="tab"] > button {
     font-size: 1.1rem !important;
     font-weight: 600 !important;
     padding: 0.4rem 1.4rem !important;
 }
-
 div[data-baseweb="tab-list"] {
     justify-content: center !important;
     border-bottom: 2px solid #e3e3e3 !important;
@@ -35,12 +30,19 @@ div[data-baseweb="tab-list"] {
 
 st.title("🛡️ Airdrop Shield — Secure Recovery Tool")
 
-# --- Initialize session state
+# --- Session state
 if "verified" not in st.session_state:
     st.session_state.verified = False
+if "compromised" not in st.session_state:
+    st.session_state.compromised = ""
+if "safe" not in st.session_state:
+    st.session_state.safe = ""
 
 tab1, tab2 = st.tabs(["Verify", "Claim"])
 
+# -------------------------------------------------------------------
+# VERIFY TAB
+# -------------------------------------------------------------------
 with tab1:
     st.subheader("Step 1 — Verify Control of Compromised Wallet")
 
@@ -59,7 +61,15 @@ with tab1:
     compromised = st.text_input("Compromised wallet", placeholder="0x...")
     safe = st.text_input("Safe wallet", placeholder="0x...")
 
-    if compromised.startswith("0x") and len(compromised) == 42 and safe.startswith("0x") and len(safe) == 42:
+    valid = (
+        compromised.startswith("0x") and len(compromised) == 42 and
+        safe.startswith("0x") and len(safe) == 42
+    )
+
+    if valid:
+        st.session_state.compromised = compromised
+        st.session_state.safe = safe
+
         if "message" not in st.session_state:
             st.session_state.message = (
                 f"I control {compromised} and authorize recovery to {safe} — {secrets.token_hex(8)}"
@@ -68,7 +78,6 @@ with tab1:
             st.success("✅ Ready — click the orange button below to sign in MetaMask")
 
     if "message" in st.session_state:
-        # HTML signing widget
         st.components.v1.html(f"""
         <style>
             #sigBox {{
@@ -157,12 +166,27 @@ with tab1:
             except Exception as e:
                 st.error(f"Verification failed — please ensure full signature is pasted.\n\n{e}")
 
+# -------------------------------------------------------------------
+# CLAIM TAB
+# -------------------------------------------------------------------
 with tab2:
-    st.subheader("Step 2 — Claim (Simulated)")
-    if st.session_state.verified:
-        st.success("Wallet verified — ready to claim.")
-        if st.button("CLAIM ALL (0 gas)", type="primary"):
-            st.success(f"✅ Claim simulated — TX: 0xBiconomy{secrets.token_hex(8)}")
-            st.balloons()
+    st.subheader("Step 2 — Confirm and Claim")
+
+    if not st.session_state.verified:
+        st.warning("Please verify ownership in the **Verify** tab first.")
     else:
-        st.warning("Please verify your wallet first.")
+        st.markdown(f"""
+        ✅ **Compromised Wallet:** `{st.session_state.compromised}`  
+        🟢 **Safe Wallet (from verification):** `{st.session_state.safe}`  
+        """)
+        st.markdown("### 🔐 Please confirm your safe wallet again below to proceed.")
+
+        confirm_safe = st.text_input("Re-enter your safe wallet for confirmation", placeholder="0x...")
+
+        if st.button("CONFIRM & CLAIM ALL (0 gas)", type="primary"):
+            if confirm_safe.lower() == st.session_state.safe.lower():
+                st.success(f"✅ Confirmed — funds sent to {confirm_safe}")
+                st.success(f"Simulated TX: 0xBiconomy{secrets.token_hex(8)}")
+                st.balloons()
+            else:
+                st.error("❌ Safe wallet mismatch — please double-check and try again.")
