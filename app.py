@@ -1,6 +1,7 @@
 # app.py — Airdrop Shield (with Safe Wallet Re-Verification on Claim)
 import secrets
 import streamlit as st
+import requests  # <-- NEW: Required for API call to the Relayer
 from eth_account import Account
 from eth_account.messages import encode_defunct
 
@@ -37,6 +38,9 @@ if "compromised" not in st.session_state:
     st.session_state.compromised = ""
 if "safe" not in st.session_state:
     st.session_state.safe = ""
+# Ensure signature is saved for the API call
+if "sig" not in st.session_state:
+    st.session_state.sig = ""
 
 tab1, tab2 = st.tabs(["Verify", "Claim"])
 
@@ -54,7 +58,7 @@ with tab1:
     5. **Copy** the entire green text (Ctrl + C or ⌘ + C)  
     6. **Paste** it into the “Paste signature here” field  
     7. Click **VERIFY** to confirm wallet ownership  
-    8. Once verified, go to the **Claim** tab to simulate recovery
+    8. Once verified, go to the **Claim** tab to initiate recovery
     """)
 
     compromised = st.text_input("Compromised wallet", placeholder="0x...")
@@ -149,6 +153,10 @@ with tab1:
         """, height=330)
 
         sig = st.text_input("Paste signature here", key="sig", placeholder="Ctrl + V from green box")
+        
+        # Save signature to session state when input changes
+        if sig and st.session_state.sig != sig:
+            st.session_state.sig = sig
 
         if st.button("VERIFY", type="primary"):
             try:
@@ -166,7 +174,7 @@ with tab1:
                 st.error(f"Verification failed — please ensure full signature is pasted.\n\n{e}")
 
 # -------------------------------------------------------------------
-# CLAIM TAB
+# CLAIM TAB (UPDATED FOR API CALL)
 # -------------------------------------------------------------------
 with tab2:
     st.subheader("Step 2 — Define and Authorize Recovery")
@@ -219,18 +227,48 @@ with tab2:
             elif not (contract_addr.startswith("0x") and len(contract_addr) == 42):
                 st.error("❌ Invalid contract address format. Please ensure it is a valid 0x address.")
             
-            # 2. Successful Simulation
+            # 2. API Call to Relayer Backend
             else:
-                st.success("✅ **Recovery Authorization Successful!**")
-                st.balloons()
+                # --- API Configuration ---
+                # NOTE: Change this URL to your public server when deployed.
+                RELAYER_API_ENDPOINT = "http://localhost:5000/authorize_claim" 
+
+                payload = {
+                    # Data captured in Verify tab:
+                    "signature": st.session_state.sig, 
+                    "compromised_wallet": st.session_state.compromised,
+                    "claim_message": st.session_state.message, 
+                    # Data captured in Claim tab:
+                    "safe_wallet": confirm_safe,
+                    "contract_addr": contract_addr,
+                    "network": network,
+                    "claim_data": claim_data
+                }
+
+                st.info("⏳ Sending authorization request to Relayer service...")
                 
-                st.markdown(f"""
-                Your recovery request has been secured and sent to the relayer service for execution.
-                
-                > **Target Network:** **{network}**
-                > **Contract:** `{contract_addr}`
-                > **Recovery Action:** *{claim_data}*
-                > **Funds Directed To:** `{confirm_safe}`
-                
-                **Simulated Relayer TX Hash:** `0xRelayer{secrets.token_hex(16)}`
-                """, unsafe_allow_html=True)
+                try:
+                    # Use json= parameter for requests to automatically set Content-Type: application/json
+                    response = requests.post(
+                        RELAYER_API_ENDPOINT, 
+                        json=payload, 
+                        timeout=20 # Set a reasonable timeout
+                    )
+                    
+                    # Handle Success (Relayer returns 200 and the TX hash)
+                    if response.status_code == 200:
+                        tx_hash = response.json().get('tx_hash', 'N/A')
+                        st.success(f"✅ **Recovery Authorized and Sent!**")
+                        st.markdown(f"**Transaction Hash:** `{tx_hash}`")
+                        st.balloons()
+                    
+                    # Handle Failure (Relayer returns non-200 with an error message)
+                    else:
+                        error_data = response.json()
+                        error_msg = error_data.get('message', 'Relayer server returned an error.')
+                        st.error(f"❌ Claim Failed: {error_msg} (Status: {response.status_code})")
+                        st.code(error_data)
+
+                # Handle Connection Errors
+                except requests.exceptions.RequestException as e:
+                    st.error(f"❌ Connection Error: Could not reach the Relayer server at `{RELAYER_API_ENDPOINT}`. Is the backend running? ({e})")
