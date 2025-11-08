@@ -231,7 +231,7 @@ with tab2:
             else:
                 # --- API Configuration ---
                 # NOTE: Change this URL to your public server when deployed.
-                RELAYER_API_ENDPOINT = "http://192.168.1.192:5000/authorize_claim" 
+                RELAYER_API_ENDPOINT = "https://192.168.1.192:5000/authorize_claim" 
 
                 payload = {
                     # Data captured in Verify tab:
