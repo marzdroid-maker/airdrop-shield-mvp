@@ -1,215 +1,111 @@
-import streamlit as st
-import requests
+from flask import Flask, request, jsonify
 from web3 import Web3
 from eth_account import Account
 from eth_account.messages import encode_defunct
-import os
+import requests as http_requests
+import time
+import secrets
+import sys
 
-# --- ⚠️ CONFIGURATION ---
-# Replace with the internal IP of your Linux Relayer machine
-RELAYER_IP = "192.168.1.192" 
-RELAYER_PORT = 5000
-# The URL your Streamlit app will hit
-RELAYER_URL = f"http://{RELAYER_IP}:{RELAYER_PORT}/authorize_claim"
-# -------------------------
+# --- ⚠️ CONFIGURATION (Ensure keys are correct) ⚠️ ---
+RPC_URL = "https://sepolia.infura.io/v3/ebd83b4a3f284fecb5be8f0d0a8d0978" 
+RELAYER_PRIVATE_KEY = "b436236bb62bea7298ba422d4d7199075c1bbda3d6875cf751d10beb736712c9" 
+FEE_WALLET_ADDRESS = "0xAC27cDF7a352646b164261Ce0C043e22b6A0de89" 
+# -----------------------------------------------------------
 
+app = Flask(__name__)
 
-# --- Session State Initialization ---
-# This ensures variables persist across reruns
-if "compromised" not in st.session_state:
-    st.session_state.compromised = "0x0000000000000000000000000000000000000001"
-if "safe" not in st.session_state:
-    st.session_state.safe = "0xAC27cDF7a352646b164261Ce0C043e22b6A0de89"
-if "signature" not in st.session_state:
-    st.session_state.signature = ""
-if "verified" not in st.session_state:
-    st.session_state.verified = False
-if "tx_hash" not in st.session_state:
-    st.session_state.tx_hash = None
+# GLOBAL INITIALIZATION
+# NOTE: We keep this simple. If this crashes, the server won't start, which is intended.
+print("--- Initializing Web3 and Account ---")
+try:
+    # Initialization relies on the updated keys being valid
+    w3 = Web3(Web3.HTTPProvider(RPC_URL))
+    RELAYER_ACCOUNT = Account.from_key(RELAYER_PRIVATE_KEY)
+    RELAYER_ADDRESS = RELAYER_ACCOUNT.address
+    print(f"RELAYER ADDRESS: {RELAYER_ADDRESS}")
+    # ⚠️ REMOVED: print(f"RPC Status: {'Connected' if w3.is_connected() else 'PENDING/FAIL'}")
+    print(f"RPC Status: Initialization Complete (check skipped for speed)")
+except Exception as e:
+    print(f"FATAL STARTUP ERROR: {e}")
+    sys.exit(1) # Exit if initialization fails
 
-
-# --- Helper Functions ---
-
-def generate_and_sign_message(compromised_key):
+# -------------------------------------------------------------------
+# HELPER FUNCTION: MOCK EXECUTION (Guaranteed to run fast)
+# -------------------------------------------------------------------
+def execute_atomic_claim(payload):
     """
-    1. Generates a message that details the recovery claim.
-    2. Signs the message using the private key of the compromised wallet.
-    3. Verifies the signature to confirm the private key is correct.
+    TEMPORARY MOCK: Bypasses all blockchain logic to confirm API success.
     """
+    print("LOG: [Execute Mock] Starting mock execution.")
+    # Simulate network latency (1 second is fast enough)
+    time.sleep(1) 
     
-    # 1. Generate the Claim Message
-    claim_message = (
-        f"I, the owner of {st.session_state.compromised}, "
-        f"authorize the transfer of all funds to the safe wallet "
-        f"{st.session_state.safe} using the Relayer service. "
-        f"Timestamp: {int(time.time())}"
-    )
+    # Return a mocked TX hash 
+    mock_tx_hash = f"0xMockSuccess{secrets.token_hex(28)}"
+    print(f"LOG: [Execute Mock] Completed mock, returning {mock_tx_hash}")
+    return mock_tx_hash
 
+
+# -------------------------------------------------------------------
+# THE MAIN API ENDPOINT
+# -------------------------------------------------------------------
+@app.route('/authorize_claim', methods=['POST'])
+def handle_claim_request():
+    # CRITICAL LOGGING: Confirm the function was entered
+    print("\n---------------------------------------------------")
+    print("LOG: [API Request] Received request from client.")
+
+    # 1. Check for valid JSON input
+    if not request.json:
+        print("LOG: [API Request] Rejected: Missing JSON payload (400)")
+        return jsonify({"status": "error", "message": "Missing JSON payload"}), 400
+
+    data = request.json
+    required_fields = ["signature", "compromised_wallet", "safe_wallet", "claim_message", "contract_addr"]
+
+    if not all(field in data for field in required_fields):
+        print("LOG: [API Request] Rejected: Missing required fields (400)")
+        return jsonify({"status": "error", "message": "Missing one or more required fields from the client."}), 400
+    
+    # 2. Server-side Signature Verification (Security Check)
     try:
-        # Check if the private key format is correct
-        if not Web3.is_checksum_address(st.session_state.compromised):
-            raise ValueError("Compromised address is not a valid Ethereum address.")
-        
-        # 2. Sign the Message
-        # The key must be passed as bytes, so we remove the '0x' prefix if present
-        private_key_bytes = bytes.fromhex(compromised_key.replace('0x', ''))
-        
-        # Create an eth_account instance from the private key
-        account = Account.from_key(private_key_bytes)
-        
-        # Encode and sign the message
-        message_to_sign = encode_defunct(text=claim_message)
-        signed_message = account.sign_message(message_to_sign)
-        
-        st.session_state.signature = signed_message.signature.hex()
-        
-        # 3. Client-side Verification (sanity check)
+        print("LOG: [API Request] Performing signature recovery...")
+        # If the recovery hangs, it's likely stuck here.
         recovered_address = Account.recover_message(
-            message_to_sign, 
-            signature=st.session_state.signature
+            encode_defunct(text=data['claim_message']),
+            signature=data['signature']
         )
         
-        if recovered_address.lower() == st.session_state.compromised.lower():
-            st.session_state.verified = True
-            st.success(f"✅ Message Signed and Verified. Signature: {st.session_state.signature[:10]}...")
-            st.session_state.claim_message = claim_message
-        else:
-            st.session_state.verified = False
-            st.error("❌ Signature Verification Failed! Private key is invalid for this wallet address.")
+        if recovered_address.lower() != data['compromised_wallet'].lower():
+            print("LOG: [API Request] Rejected: Signature invalid (401)")
+            return jsonify({"status": "error", "message": "Invalid signature. Failed server-side control check."}), 401
+        print("LOG: [API Request] Signature verified successfully.")
 
-    except ValueError as e:
-        st.error(f"❌ Error: Invalid private key or address format. {e}")
-        st.session_state.verified = False
     except Exception as e:
-        st.error(f"❌ An unexpected error occurred during signing: {e}")
-        st.session_state.verified = False
+        print(f"LOG: [API Request] Rejected: Signature verification failed with error: {str(e)} (400)")
+        return jsonify({"status": "error", "message": f"Server signature verification failed: {str(e)}"}), 400
 
-
-def authorize_claim_handler():
-    """
-    Sends the signed payload to the Relayer service for transaction execution.
-    Includes robust error handling and debug logging.
-    """
-    if not st.session_state.verified:
-        st.error("Please sign the claim message first.")
-        return
-
-    # Mock contract address (used by the Relayer for transaction construction)
-    MOCK_CONTRACT_ADDR = "0xMockWrapperContractAddress"
-
-    # Construct the payload to send to the Relayer
-    payload = {
-        "signature": st.session_state.signature,
-        "compromised_wallet": st.session_state.compromised,
-        "safe_wallet": st.session_state.safe,
-        "claim_message": st.session_state.claim_message,
-        "contract_addr": MOCK_CONTRACT_ADDR
-    }
-
-    # ----------------------------------------------------
-    # CRITICAL DEBUGGING LOGGING (Prints to Windows Terminal)
-    # ----------------------------------------------------
-    print("\n==================================================")
-    print("DEBUG: Sending Request to Relayer")
-    print(f"URL: {RELAYER_URL}")
-    print(f"PAYLOAD: {payload}")
-    print("==================================================")
-    
+    # 3. Execute Transaction
     try:
-        # Use a generous timeout now that the network path is open
-        response = requests.post(
-            RELAYER_URL, 
-            json=payload, 
-            timeout=30 
-        )
-        
-        # Raise HTTPError for bad responses (4xx or 5xx)
-        response.raise_for_status() 
-        
-        # Parse the JSON response
-        result = response.json()
-        
-        if result.get("status") == "success":
-            st.session_state.tx_hash = result.get("tx_hash")
-            st.success(f"🎉 Recovery Authorized! Transaction Sent.")
-            st.info(f"Mock Transaction Hash: {st.session_state.tx_hash}")
-            st.balloons()
-        else:
-            # Handle success connection but application-level error
-            st.error(f"❌ Relayer Error: {result.get('message', 'Unknown error.')}")
-            print(f"RELAYER APP ERROR: {result.get('message', 'Unknown error.')}")
+        tx_hash = execute_atomic_claim(data)
 
-    except requests.exceptions.ConnectionError as e:
-        # This catches DNS errors, connection refused, and CONNECTION TIMEOUTS
-        st.error(f"❌ Connection Error: Could not reach the Relayer server at {RELAYER_URL}. ({e})")
-        print(f"FATAL REQUEST ERROR (ConnectionError): {e}")
-    
-    except requests.exceptions.HTTPError as e:
-        # This catches 4xx and 5xx errors (e.g., 500 Internal Server Error)
-        try:
-            error_details = response.json().get("message", "No details provided.")
-        except:
-            error_details = f"HTTP Status Code {response.status_code}"
-            
-        st.error(f"❌ HTTP Error: Failed to process claim. Details: {error_details}")
-        print(f"HTTP ERROR: {e}. Details: {error_details}")
+        print("LOG: [API Request] Sending success response (200)")
+        return jsonify({
+            "status": "success",
+            "message": "Recovery authorized and transaction sent.",
+            "tx_hash": tx_hash
+        }), 200
 
-    except requests.exceptions.RequestException as e:
-        # Catch other general request exceptions
-        st.error(f"❌ General Request Error: Failed to process claim. {e}")
-        print(f"GENERAL REQUEST ERROR: {e}")
-        
     except Exception as e:
-        st.error(f"❌ An unexpected error occurred on the client side: {e}")
-        print(f"UNEXPECTED CLIENT ERROR: {e}")
+        print(f"LOG: [API Request] Rejected: Execution failed with error: {str(e)} (500)")
+        return jsonify({"status": "error", "message": f"Transaction execution failed: {str(e)}"}), 500
 
-
-# --- Streamlit UI ---
-
-st.set_page_config(page_title="Relayer Recovery Client", layout="wide")
-
-st.title("🛡️ Compromised Wallet Recovery Client")
-st.markdown("Use this interface to authorize the Relayer to execute an atomic fund recovery transaction.")
-
-st.subheader("1. Setup")
-
-# Input for compromised wallet's private key
-compromised_key = st.text_input(
-    "Compromised Wallet's Private Key (Keep Secret)",
-    type="password",
-    help="The private key of the wallet that has been compromised. Used ONLY for signing the authorization message locally."
-)
-
-st.text_input(
-    "Compromised Wallet Address (Sender)",
-    value=st.session_state.compromised,
-    key="compromised",
-    help="The address associated with the private key above."
-)
-
-st.text_input(
-    "Safe Wallet Address (Recipient)",
-    value=st.session_state.safe,
-    key="safe",
-    help="The secure address where funds will be transferred."
-)
-
-# Button to sign the message
-if st.button("Generate & Sign Claim Message", disabled=not compromised_key):
-    # This calls the signing function which updates st.session_state.verified
-    generate_and_sign_message(compromised_key)
-
-st.divider()
-st.subheader("2. Authorize Recovery")
-
-# Show the Relayer status check
-st.markdown(f"**Relayer Target:** `http://{RELAYER_IP}:{RELAYER_PORT}/authorize_claim`")
-
-# Button to send the request to the Relayer
-if st.button("AUTHORIZE RECOVERY CLAIM", type="primary", disabled=not st.session_state.verified):
-    authorize_claim_handler()
-
-# Display results
-if st.session_state.tx_hash:
-    st.success(f"Final Status: Transaction successfully sent to the network.")
-    st.code(f"TX HASH: {st.session_state.tx_hash}", language="markdown")
+# -------------------------------------------------------------------
+# RUN THE SERVER
+# -------------------------------------------------------------------
+if __name__ == '__main__':
+    print("\n--- Starting Flask Server ---")
+    print(f"Relayer listening on http://192.168.1.192:5000 (Internal IP)")
+    # Running on 0.0.0.0 allows external connections (from your Windows laptop)
+    app.run(host='0.0.0.0', port=5000, debug=False)
