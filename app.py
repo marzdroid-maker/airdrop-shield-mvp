@@ -1,206 +1,274 @@
+# app.py — Airdrop Shield (with Safe Wallet Re-Verification on Claim)
+import secrets
 import streamlit as st
-import requests
-from web3 import Web3
+import requests  # <-- NEW: Required for API call to the Relayer
 from eth_account import Account
 from eth_account.messages import encode_defunct
-import os
-import time
 
-# --- ⚠️ CONFIGURATION (Internal IP Target) ---
-# THIS IS SET TO YOUR LINUX MACHINE'S IP (192.168.1.192)
-RELAYER_IP = "192.168.1.192" 
-RELAYER_PORT = 5000
-# The URL your Streamlit app will hit
-RELAYER_URL = f"http://{RELAYER_IP}:{RELAYER_PORT}/authorize_claim"
-# -------------------------
+st.set_page_config(page_title="Airdrop Shield", page_icon="🛡️")
 
+# --- Custom styling
+st.markdown("""
+<style>
+h1 {
+    white-space: nowrap;
+    font-size: 2.2rem !important;
+    font-weight: 700 !important;
+    margin-bottom: 0.3rem !important;
+}
+div[data-baseweb="tab"] > button {
+    font-size: 1.1rem !important;
+    font-weight: 600 !important;
+    padding: 0.4rem 1.4rem !important;
+}
+div[data-baseweb="tab-list"] {
+    justify-content: center !important;
+    border-bottom: 2px solid #e3e3e3 !important;
+    margin-bottom: 0.5rem !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
-# --- Session State Initialization ---
-if "compromised" not in st.session_state:
-    st.session_state.compromised = "0x0000000000000000000000000000000000000001"
-if "safe" not in st.session_state:
-    st.session_state.safe = "0xAC27cDF7a352646b164261Ce0C043e22b6A0de89"
-if "signature" not in st.session_state:
-    st.session_state.signature = ""
+st.title("🛡️ Airdrop Shield — Secure Recovery Tool")
+
+# --- Session state
 if "verified" not in st.session_state:
     st.session_state.verified = False
-if "tx_hash" not in st.session_state:
-    st.session_state.tx_hash = None
+if "compromised" not in st.session_state:
+    st.session_state.compromised = ""
+if "safe" not in st.session_state:
+    st.session_state.safe = ""
+# Ensure signature is saved for the API call
+if "sig" not in st.session_state:
+    st.session_state.sig = ""
 
+tab1, tab2 = st.tabs(["Verify", "Claim"])
 
-# --- Helper Functions ---
+# -------------------------------------------------------------------
+# VERIFY TAB
+# -------------------------------------------------------------------
+with tab1:
+    st.subheader("Step 1 — Verify Control of Compromised Wallet")
 
-def generate_and_sign_message(compromised_key):
-    """
-    1. Generates a message that details the recovery claim.
-    2. Signs the message using the private key of the compromised wallet.
-    3. Verifies the signature to confirm the private key is correct.
-    """
-    
-    # 1. Generate the Claim Message
-    claim_message = (
-        f"I, the owner of {st.session_state.compromised}, "
-        f"authorize the transfer of all funds to the safe wallet "
-        f"{st.session_state.safe} using the Relayer service. "
-        f"Timestamp: {int(time.time())}"
+    st.markdown("""
+    ### 🧭 Instructions
+    1. **Enter your compromised wallet** (the one that lost access)  
+    2. **Enter your safe wallet** (where funds will be sent) then **hit Enter to apply** 3. Click **🟧 1-CLICK SIGN** — MetaMask will pop up and ask you to sign a message  
+    4. After signing, a **green box** appears at the bottom containing your signature  
+    5. **Copy** the entire green text (Ctrl + C or ⌘ + C)  
+    6. **Paste** it into the “Paste signature here” field  
+    7. Click **VERIFY** to confirm wallet ownership  
+    8. Once verified, go to the **Claim** tab to initiate recovery
+    """)
+
+    compromised = st.text_input("Compromised wallet", placeholder="0x...")
+    safe = st.text_input("Safe wallet", placeholder="0x...")
+
+    valid = (
+        compromised.startswith("0x") and len(compromised) == 42 and
+        safe.startswith("0x") and len(safe) == 42
     )
 
-    try:
-        # Check if the private key format is correct
-        if not Web3.is_checksum_address(st.session_state.compromised):
-            if st.session_state.compromised.lower() == "0x0000000000000000000000000000000000000001":
-                pass
-            else:
-                raise ValueError("Compromised address is not a valid Ethereum address.")
-        
-        # 2. Sign the Message
-        private_key_bytes = bytes.fromhex(compromised_key.replace('0x', ''))
-        account = Account.from_key(private_key_bytes)
-        
-        # Encode and sign the message
-        message_to_sign = encode_defunct(text=claim_message)
-        signed_message = account.sign_message(message_to_sign)
-        
-        st.session_state.signature = signed_message.signature.hex()
-        
-        # 3. Client-side Verification (sanity check)
-        recovered_address = Account.recover_message(
-            message_to_sign, 
-            signature=st.session_state.signature
-        )
-        
-        if recovered_address.lower() == st.session_state.compromised.lower():
-            st.session_state.verified = True
-            st.success(f"✅ Message Signed and Verified. Signature: {st.session_state.signature[:10]}...")
-            st.session_state.claim_message = claim_message
-        else:
-            st.session_state.verified = False
-            st.error("❌ Signature Verification Failed! Private key is invalid for this wallet address.")
+    if valid:
+        st.session_state.compromised = compromised
+        st.session_state.safe = safe
 
-    except ValueError as e:
-        st.error(f"❌ Error: Invalid private key or address format. {e}")
-        st.session_state.verified = False
-    except Exception as e:
-        st.error(f"❌ An unexpected error occurred during signing: {e}")
-        st.session_state.verified = False
+        if "message" not in st.session_state:
+            st.session_state.message = (
+                f"I control {compromised} and authorize recovery to {safe} — {secrets.token_hex(8)}"
+            )
+            st.code(st.session_state.message)
+            st.success("✅ Ready — click the orange button below to sign in MetaMask")
 
+    if "message" in st.session_state:
+        st.components.v1.html(f"""
+        <style>
+            #sigBox {{
+                position: fixed;
+                bottom: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                width: 90%;
+                max-width: 700px;
+                height: 180px;
+                padding: 16px;
+                background: #000;
+                color: #0f0;
+                border: 4px solid #0f0;
+                border-radius: 14px;
+                font-family: monospace;
+                font-size: 16px;
+                z-index: 9999;
+                box-shadow: 0 0 30px #0f0;
+                display: none;
+            }}
+            #sigBox.show {{ display: block; }}
+        </style>
 
-def authorize_claim_handler():
-    """
-    Sends the signed payload to the Relayer service for transaction execution.
-    Includes robust error handling and debug logging.
-    """
+        <script>
+        window.addEventListener('load', async () => {{
+            const e = window.ethereum || window.top?.ethereum;
+            if (e) {{
+                try {{ await e.request({{method:'eth_requestAccounts'}}); }}
+                catch(_){{}}
+            }}
+        }});
+
+        async function go() {{
+            const e = window.ethereum || window.top?.ethereum;
+            if (!e) return alert("Please install MetaMask and connect your wallet.");
+            try {{
+                const [a] = await e.request({{ method:'eth_requestAccounts' }});
+                const s = await e.request({{
+                    method:'personal_sign',
+                    params:['{st.session_state.message}', a]
+                }});
+                let box = document.getElementById('sigBox');
+                if (!box) {{
+                    box = document.createElement('textarea');
+                    box.id = 'sigBox';
+                    box.readOnly = true;
+                    document.body.appendChild(box);
+                }}
+                box.value = s;
+                box.classList.add('show');
+                box.scrollIntoView({{behavior:'smooth', block:'center'}});
+                alert("✅ Signature created! Scroll down and copy it from the green box.");
+            }} catch (err) {{
+                alert("❌ Signing was cancelled or failed. Try again.");
+                console.error(err);
+            }}
+        }}
+        </script>
+
+        <div style="text-align:center; margin:40px 0;">
+            <button onclick="go()" 
+                    style="background:#f6851b;color:white;padding:26px 100px;border:none;
+                            border-radius:20px;font-size:36px;font-weight:bold;cursor:pointer;
+                            box-shadow:0 15px 60px #f6851b88;">
+                1-CLICK SIGN
+            </button>
+            <p><b>Click → Sign → Copy from green box → Paste below</b></p>
+        </div>
+        """, height=330)
+
+        sig = st.text_input("Paste signature here", key="sig", placeholder="Ctrl + V from green box")
+        
+        # Save signature to session state when input changes
+        if sig and st.session_state.sig != sig:
+            st.session_state.sig = sig
+
+        if st.button("VERIFY", type="primary"):
+            try:
+                recovered = Account.recover_message(
+                    encode_defunct(text=st.session_state.message),
+                    signature=sig
+                )
+                if recovered.lower() == compromised.lower():
+                    st.success("✅ Verified — you control the compromised wallet!")
+                    st.session_state.verified = True
+                    st.balloons()
+                else:
+                    st.error(f"❌ Signature recovered {recovered}, expected {compromised}")
+            except Exception as e:
+                st.error(f"Verification failed — please ensure full signature is pasted.\n\n{e}")
+
+# -------------------------------------------------------------------
+# CLAIM TAB (UPDATED FOR API CALL)
+# -------------------------------------------------------------------
+with tab2:
+    st.subheader("Step 2 — Define and Authorize Recovery")
+
     if not st.session_state.verified:
-        st.error("Please sign the claim message first.")
-        return
+        st.warning("Please verify ownership in the **Verify** tab first.")
+    else:
+        # Display verified details with truncation for cleanliness
+        comp_disp = f"{st.session_state.compromised[:6]}...{st.session_state.compromised[-4:]}"
+        safe_disp = f"{st.session_state.safe[:6]}...{st.session_state.safe[-4:]}"
+        
+        st.markdown(f"""
+        ✅ **Compromised Wallet:** `{comp_disp}`  
+        🟢 **Safe Wallet (from verification):** `{safe_disp}`  
+        """)
+        
+        st.markdown("### 🧬 Define the Airdrop/Asset to Claim")
 
-    # Mock contract address 
-    MOCK_CONTRACT_ADDR = "0xMockWrapperContractAddress"
-
-    # Construct the payload
-    payload = {
-        "signature": st.session_state.signature,
-        "compromised_wallet": st.session_state.compromised,
-        "safe_wallet": st.session_state.safe,
-        "claim_message": st.session_state.claim_message,
-        "contract_addr": MOCK_CONTRACT_ADDR
-    }
-
-    # ----------------------------------------------------
-    # CRITICAL DEBUGGING LOGGING 
-    # ----------------------------------------------------
-    print("\n==================================================")
-    print("DEBUG: Sending Request to Relayer")
-    print(f"URL: {RELAYER_URL}")
-    print(f"PAYLOAD: {payload}")
-    print("==================================================")
-    
-    try:
-        response = requests.post(
-            RELAYER_URL, 
-            json=payload, 
-            timeout=30 
+        contract_addr = st.text_input(
+            "Target Contract Address (The contract that holds the claimable assets)",
+            placeholder="0x..."
         )
         
-        response.raise_for_status() 
-        result = response.json()
+        network = st.selectbox(
+            "Network where the contract is located",
+            ["Ethereum Mainnet", "Arbitrum", "Polygon", "Optimism", "Base", "Other..."]
+        )
         
-        if result.get("status") == "success":
-            st.session_state.tx_hash = result.get("tx_hash")
-            st.success(f"🎉 Recovery Authorized! Transaction Sent.")
-            st.info(f"Mock Transaction Hash: {st.session_state.tx_hash}")
-            st.balloons()
-        else:
-            st.error(f"❌ Relayer Error: {result.get('message', 'Unknown error.')}")
-            print(f"RELAYER APP ERROR: {result.get('message', 'Unknown error.')}")
+        claim_data = st.text_area(
+            "Specific Claim Data (e.g., Merkle Proof, claim index, or 'All Tokens')",
+            value="All Claimable Tokens via Recovery Function",
+            height=100
+        )
+        
+        st.markdown("---")
 
-    except requests.exceptions.ConnectionError as e:
-        st.error(f"❌ Connection Error: Could not reach the Relayer server at {RELAYER_URL}. ({e})")
-        print(f"FATAL REQUEST ERROR (ConnectionError): {e}")
-    
-    except requests.exceptions.HTTPError as e:
-        try:
-            error_details = response.json().get("message", "No details provided.")
-        except:
-            error_details = f"HTTP Status Code {response.status_code}"
+        st.markdown("### 🔐 Re-Confirm Safe Wallet & Authorize")
+
+        confirm_safe = st.text_input(
+            "Re-enter your safe wallet for final confirmation", 
+            placeholder="0x..."
+        )
+
+        if st.button("AUTHORIZE RECOVERY CLAIM (0 gas)", type="primary"):
             
-        st.error(f"❌ HTTP Error: Failed to process claim. Details: {error_details}")
-        print(f"HTTP ERROR: {e}. Details: {error_details}")
+            # 1. Validation Checks
+            if confirm_safe.lower() != st.session_state.safe.lower():
+                st.error("❌ Safe wallet mismatch — please double-check the re-entered address.")
+            
+            elif not (contract_addr.startswith("0x") and len(contract_addr) == 42):
+                st.error("❌ Invalid contract address format. Please ensure it is a valid 0x address.")
+            
+            # 2. API Call to Relayer Backend
+            else:
+                # --- API Configuration ---
+                # NOTE: Change this URL to your public server when deployed.
+                RELAYER_API_ENDPOINT = "http://192.168.1.192:5000/authorize_claim" 
 
-    except requests.exceptions.RequestException as e:
-        st.error(f"❌ General Request Error: Failed to process claim. {e}")
-        print(f"GENERAL REQUEST ERROR: {e}")
-        
-    except Exception as e:
-        st.error(f"❌ An unexpected error occurred on the client side: {e}")
-        print(f"UNEXPECTED CLIENT ERROR: {e}")
+                payload = {
+                    # Data captured in Verify tab:
+                    "signature": st.session_state.sig, 
+                    "compromised_wallet": st.session_state.compromised,
+                    "claim_message": st.session_state.message, 
+                    # Data captured in Claim tab:
+                    "safe_wallet": confirm_safe,
+                    "contract_addr": contract_addr,
+                    "network": network,
+                    "claim_data": claim_data
+                }
 
+                st.info("⏳ Sending authorization request to Relayer service...")
+                
+                try:
+                    # Use json= parameter for requests to automatically set Content-Type: application/json
+                    response = requests.post(
+                        RELAYER_API_ENDPOINT, 
+                        json=payload, 
+                        timeout=20 # Set a reasonable timeout
+                    )
+                    
+                    # Handle Success (Relayer returns 200 and the TX hash)
+                    if response.status_code == 200:
+                        tx_hash = response.json().get('tx_hash', 'N/A')
+                        st.success(f"✅ **Recovery Authorized and Sent!**")
+                        st.markdown(f"**Transaction Hash:** `{tx_hash}`")
+                        st.balloons()
+                    
+                    # Handle Failure (Relayer returns non-200 with an error message)
+                    else:
+                        error_data = response.json()
+                        error_msg = error_data.get('message', 'Relayer server returned an error.')
+                        st.error(f"❌ Claim Failed: {error_msg} (Status: {response.status_code})")
+                        st.code(error_data)
 
-# --- Streamlit UI ---
-
-st.set_page_config(page_title="Relayer Recovery Client", layout="wide")
-
-st.title("🛡️ Compromised Wallet Recovery Client")
-st.markdown("Use this interface to authorize the Relayer to execute an atomic fund recovery transaction.")
-
-st.subheader("1. Setup")
-
-# Input for compromised wallet's private key
-compromised_key = st.text_input(
-    "Compromised Wallet's Private Key (Keep Secret)",
-    type="password",
-    help="The private key of the wallet that has been compromised. Used ONLY for signing the authorization message locally."
-)
-
-st.text_input(
-    "Compromised Wallet Address (Sender)",
-    value=st.session_state.compromised,
-    key="compromised",
-    help="The address associated with the private key above."
-)
-
-st.text_input(
-    "Safe Wallet Address (Recipient)",
-    value=st.session_state.safe,
-    key="safe",
-    help="The secure address where funds will be transferred."
-)
-
-# Button to sign the message
-if st.button("Generate & Sign Claim Message", disabled=not compromised_key):
-    generate_and_sign_message(compromised_key)
-
-st.divider()
-st.subheader("2. Authorize Recovery")
-
-# Show the Relayer status check
-st.markdown(f"**Relayer Target:** `http://{RELAYER_IP}:{RELAYER_PORT}/authorize_claim`")
-
-# Button to send the request to the Relayer
-if st.button("AUTHORIZE RECOVERY CLAIM", type="primary", disabled=not st.session_state.verified):
-    authorize_claim_handler()
-
-# Display results
-if st.session_state.tx_hash:
-    st.success(f"Final Status: Transaction successfully sent to the network.")
-    st.code(f"TX HASH: {st.session_state.tx_hash}", language="markdown")
+                # Handle Connection Errors
+                except requests.exceptions.RequestException as e:
+                    st.error(f"❌ Connection Error: Could not reach the Relayer server at `{RELAYER_API_ENDPOINT}`. Is the backend running? ({e})")
